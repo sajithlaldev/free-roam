@@ -194,6 +194,13 @@ The character model ships without animation clips, so the body is animated proce
 
 - **Legs:** analytic two-bone IK with planted feet. The stance foot's toe joint stays fixed on the ground while the heel strikes, rolls flat and lifts (the foot pivots about the toe, raising the ankle) before toe-off; cadence, stride and the stance/swing ratio follow speed and are scaled to the rig's leg length; hip height is solved each frame from what the stance leg can reach (the natural walking bob, ~7 cm), so the body never sinks into a crouch. Feet follow the ground slope. `tools/anim-lab.html` measures foot slip and hip/head height at each speed.
 - **Body:** pelvis bob (vaulting walk vs compressing run), lateral sway and twist; shoulders counter-rotate; arms swing opposite the legs and bend into a pumping sprint; lean into acceleration; bank into turns; the head stays level and looks into turns; turning on the spot makes the feet step.
+- **Walk:** follows measured human gait. It's a relaxed 1.3 m/s at about 1.8 steps a second, with pelvic list (the swing-side hip drops), sway over the stance foot and a modest arm swing that grows with speed, the elbow bending as each arm comes forward. Sprint is unchanged.
+- **Idle:**
+  - **Always, when standing still:** breathing (chest and shoulders) and a slow balance sway.
+  - **Weight:** it rests on one leg (that hip rides up, the other knee relaxes and its foot sits a little forward), and every so often shifts across to the other leg.
+  - **Actions:** random ones blend in and out every few seconds: looking around, checking a watch, scratching the head, a stretch, hands on hips, arms crossed, a yawn and a neck roll. The same action never plays twice in a row.
+  - **Who gets it:** you, other players and pedestrians who stop.
+  - **Testing:** `tools/anim-lab.html` can trigger each one (`lab.av.rig.forceIdle('cross')`, `lab.camFront()`).
 - **Jump:** take-off, airborne tuck with arms out, landing absorbed by the knees in proportion to fall speed.
 - **Crouch**, **lie down** (kneel first, then onto the forearms; crawling when moving), **swim** (breaststroke when moving, treading water when still), **sit** (chairs and benches; car passenger; driving with hands on the wheel).
 

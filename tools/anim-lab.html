@@ -55,6 +55,12 @@ window.lab = {
     cam.position.set(p.x + (side ? 0 : -4), 0.95, side ? 4.2 : 0.3); cam.lookAt(p.x, 0.85, 0);
     renderer.render(scene, cam);
   },
+  /** Camera in front of the avatar (it faces +Z), framing the whole body. */
+  camFront() {
+    const p = av.group.position;
+    cam.position.set(p.x + 0.6, 1.25, p.z + 3.4); cam.lookAt(p.x, 0.95, p.z);
+    renderer.render(scene, cam);
+  },
   av,
 };
 window.__ready = true;

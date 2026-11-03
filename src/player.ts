@@ -12,7 +12,7 @@ import type { World } from './world/index';
 // Capsule shapes per stance: [halfHeight, radius]; the capsule's centre sits half+radius above the feet.
 const SHAPES: Record<Stance, [number, number]> = { 0: [0.5, 0.33], 1: [0.22, 0.33], 2: [0.06, 0.3] };
 export const EYE: Record<Stance, number> = { 0: 1.6, 1: 1.1, 2: 0.45 };
-const SPEED = { walk: 1.75, sprint: 6.4, crouch: 1.15, prone: 0.55, swim: 1.1, swimFast: 1.8 };
+const SPEED = { walk: 1.3, sprint: 6.4, crouch: 1.15, prone: 0.55, swim: 1.1, swimFast: 1.8 };
 const GRAVITY = 9.81;
 const JUMP_V = 3.4; // ≈ 0.6 m jump
 const SWIM_DEPTH = 1.25; // deeper than this (at the player's position) → swimming
