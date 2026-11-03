@@ -17,7 +17,7 @@ export const OCCLUSION = { gain: 0.28, lowpassHz: 650 };
  * - credit: shown on the join screen (the bundled model is CC-BY-4.0, which requires it).
  */
 export const AVATAR = {
-  url: '/models/avatar.glb',
+  url: `${import.meta.env.BASE_URL}models/avatar.glb`,
   height: 1.7,
   yawOffset: 0,
   clips: { idle: /idle/i, walk: /walk(?!jump)/i, run: /run/i },
@@ -46,3 +46,11 @@ export const TOPIC_PA = 'pa';
 export const TOPIC_CAR = 'car';
 export const TOPIC_CAR_SEAT = 'carseat';
 export const TOPIC_RACE = 'race';
+
+/**
+ * Token server for multiplayer. Same origin by default (`npm run dev` / `npm start`); a static
+ * build (GitHub Pages) can point at a token server hosted elsewhere with VITE_TOKEN_URL.
+ */
+export const TOKEN_URL: string = import.meta.env.VITE_TOKEN_URL || `${import.meta.env.BASE_URL}api/token`;
+/** A static build with no token server configured: multiplayer isn't available. */
+export const MULTIPLAYER_AVAILABLE = !(import.meta.env.VITE_STATIC === '1' && !import.meta.env.VITE_TOKEN_URL);

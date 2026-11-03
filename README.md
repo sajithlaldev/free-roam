@@ -52,6 +52,18 @@ No LiveKit yet? Choose **Single player** on the join screen (or open `http://loc
 
 Production: `npm run build && npm start` (the token server also serves `dist/`).
 
+### GitHub Pages
+
+`.github/workflows/pages.yml` builds the game and publishes it to GitHub Pages on every push to `main` (or by hand from the Actions tab). One-time setup: **Settings → Pages → Build and deployment → Source: GitHub Actions**. The game is then at `https://<user>.github.io/<repo>/`.
+
+Pages only hosts static files, so that copy runs **single player**. The Multiplayer button is disabled there, with a note explaining why. To turn multiplayer on:
+1. Run the token server somewhere public with `npm start` and your LiveKit keys.
+2. Set `CORS_ORIGINS=https://<user>.github.io` on that server.
+3. Add a repository variable `TOKEN_URL` with the value `https://your-server/api/token` (**Settings → Secrets and variables → Actions → Variables**).
+4. Re-run the workflow.
+
+The build uses `VITE_BASE=/<repo>/` so the model and decoder load from the repo subpath.
+
 ## Controls
 
 **On foot**

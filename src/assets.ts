@@ -9,7 +9,7 @@ import { findHumanoidBone } from './procedural';
 let loader: GLTFLoader | null = null;
 function getLoader(): GLTFLoader {
   if (!loader) {
-    const draco = new DRACOLoader().setDecoderPath('/draco/');
+    const draco = new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}draco/`);
     loader = new GLTFLoader().setDRACOLoader(draco).setMeshoptDecoder(MeshoptDecoder);
   }
   return loader;

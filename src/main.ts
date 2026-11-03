@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Announcer } from './announce';
 import { Car, FORTUNER, JIMNY, restWheelY, type CarInput } from './car';
-import { AVATAR, CAR_HZ, CAR_PARKED_HEARTBEAT_MS, POS_HZ } from './config';
+import { AVATAR, CAR_HZ, CAR_PARKED_HEARTBEAT_MS, MULTIPLAYER_AVAILABLE, POS_HZ } from './config';
 import { Net } from './net';
 import { Pedestrians } from './npc';
 import { MEDALS, OffroadRace, fmtTime } from './race';
@@ -39,7 +39,7 @@ let SOLO = mode === 'single';
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const ui = new UI();
 let room = roomFromUrl();
-ui.bindMode({ get: () => mode, set: (m) => (mode = m) });
+ui.bindMode({ get: () => mode, set: (m) => (mode = m) }, MULTIPLAYER_AVAILABLE);
 ui.bindRooms({
   get: () => room,
   create: () => setUrlRoom((room = newRoomCode())),

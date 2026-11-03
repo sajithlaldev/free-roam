@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { ConnectionState, Room, RoomEvent, Track, type RemoteParticipant } from 'livekit-client';
 import type { CarState } from './car';
-import { TOPIC_CAR, TOPIC_CAR_SEAT, TOPIC_PA, TOPIC_POS, TOPIC_RACE } from './config';
+import { TOKEN_URL, TOPIC_CAR, TOPIC_CAR_SEAT, TOPIC_PA, TOPIC_POS, TOPIC_RACE } from './config';
 import { packFlags, unpackFlags, type NetState } from './player';
 
 export interface NetHandlers {
@@ -96,13 +96,19 @@ export class Net {
   }
 
   async connect(name: string, roomCode: string): Promise<{ identity: string }> {
-    const res = await fetch('/api/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, room: roomCode }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || `Token request failed (${res.status})`);
+    let res: Response;
+    try {
+      res = await fetch(TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, room: roomCode }),
+      });
+    } catch {
+      throw new Error("Can't reach the voice server — try single player, or check it's running.");
+    }
+    const body = await res.json().catch(() => null);
+    if (!body && (res.status === 404 || res.status === 405)) throw new Error('This site has no voice server, so only single player works here.');
+    if (!res.ok || !body) throw new Error(body?.error || `Token request failed (${res.status})`);
 
     const room = this.room;
     await room.connect(body.url, body.token);

@@ -80,13 +80,21 @@ export class UI {
   }
 
   /** Single player / Multiplayer switch on the join screen. */
-  bindMode(o: { get: () => 'single' | 'multi'; set: (m: 'single' | 'multi') => void }) {
+  bindMode(o: { get: () => 'single' | 'multi'; set: (m: 'single' | 'multi') => void }, multiplayer = true) {
+    if (!multiplayer) {
+      o.set('single');
+      const b = $('modeMulti') as HTMLButtonElement;
+      b.disabled = true;
+      b.title = 'Multiplayer needs the voice server (not part of this static site)';
+    }
     const refresh = () => {
       const m = o.get();
       $('modeSingle').classList.toggle('on', m === 'single');
       $('modeMulti').classList.toggle('on', m === 'multi');
       $('roomBox').hidden = m !== 'multi';
-      $('modeHint').textContent = m === 'single' ? 'Explore on your own — with people and traffic around town.' : 'Play and talk with friends (needs the voice server). No NPCs.';
+      $('modeHint').textContent = !multiplayer
+        ? 'Explore on your own — with people and traffic around town. (Multiplayer needs the voice server, which this site doesn’t have.)'
+        : m === 'single' ? 'Explore on your own — with people and traffic around town.' : 'Play and talk with friends (needs the voice server). No NPCs.';
     };
     $('modeSingle').addEventListener('click', () => (o.set('single'), refresh()));
     $('modeMulti').addEventListener('click', () => (o.set('multi'), refresh()));

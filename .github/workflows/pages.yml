@@ -1,0 +1,58 @@
+# Builds the game and publishes it to GitHub Pages on every push to main.
+#
+# One-time setup: Settings → Pages → Build and deployment → Source: "GitHub Actions".
+# The site is static, so it runs single player. For multiplayer, host the token server
+# (`npm start`, with LiveKit keys and CORS_ORIGINS=https://<user>.github.io) somewhere and
+# set a repository variable TOKEN_URL (Settings → Secrets and variables → Actions →
+# Variables) to its https://…/api/token address.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_BASE: /${{ github.event.repository.name }}/
+          VITE_STATIC: '1'
+          VITE_TOKEN_URL: ${{ vars.TOKEN_URL }}
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

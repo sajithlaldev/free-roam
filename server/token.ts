@@ -30,6 +30,21 @@ function limited(ip: string): boolean {
 const app = express();
 app.set('trust proxy', 1);
 
+// CORS for a static front end hosted elsewhere (e.g. GitHub Pages):
+// CORS_ORIGINS=https://you.github.io (comma-separated). Off by default.
+const ORIGINS = (process.env.CORS_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+app.use('/api', (req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 app.post('/api/token', express.json({ limit: '1kb' }), async (req, res) => {
   if (limited(req.ip ?? 'unknown')) return res.status(429).json({ error: 'Too many requests' });
 
