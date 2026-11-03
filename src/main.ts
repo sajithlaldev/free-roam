@@ -190,7 +190,7 @@ ui.onJoin(async (name) => {
   ui.setInviteVisible(!SOLO);
   ui.setMic(net?.micAvailable ? 'on' : 'unavailable');
   requestAnimationFrame(frame);
-  if (import.meta.env.DEV) Object.assign(window, { __vw: { world, player, remotes, voice, net, cars, registry } });
+  if (import.meta.env.DEV) Object.assign(window, { __vw: { world, player, remotes, voice, net, cars, registry, pedestrians, traffic } });
 });
 
 async function toggleMic() {
@@ -330,7 +330,11 @@ function frame(now: number) {
   const obstacles = [player.avatar.group.position, ...cars.map((c) => c.visual.root.position), ...[...remotes.values()].map((r) => r.avatar.group.position)];
   traffic?.update(dt, obstacles, audio.sys);
   if (driving) driving.state.horn = player.isDown('KeyH');
-  pedestrians?.update(dt, world.camera.position);
+  if (pedestrians) {
+    const people: [THREE.Vector3, number][] = [[player.avatar.group.position, 0.35], ...[...remotes.values()].map((r) => [r.avatar.group.position, 0.35] as [THREE.Vector3, number])];
+    for (const c of cars) people.push([c.visual.root.position, c.spec.track / 2 + 0.6]);
+    pedestrians.update(dt, world.camera.position, people);
+  }
   for (const c of cars) c.update(now, dt);
   for (const r of remotes.values()) {
     r.update(now, dt, cars);

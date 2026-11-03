@@ -22,6 +22,10 @@ interface Walker {
   phase: number;
   body: RAPIER.RigidBody;
   prevYaw: number;
+  /** Local avoidance: time lost waiting, current pace (0..1), sideways step (m, + = left). */
+  delay: number;
+  pace: number;
+  side: number;
 }
 
 interface Sitter {
@@ -87,7 +91,7 @@ export class Pedestrians {
       world.scene.add(avatar.group);
       const body = world.physics.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -60, 0));
       world.physics.createCollider(RAPIER.ColliderDesc.capsule(0.5, 0.3), body);
-      this.walkers.push({ avatar, path, closed, length: pathLength(path, closed), speed, phase: i * 37.3, body, prevYaw: 0 });
+      this.walkers.push({ avatar, path, closed, length: pathLength(path, closed), speed, phase: i * 37.3, body, prevYaw: 0, delay: 0, pace: 1, side: 0 });
     });
 
     // Sitters: a few in the meeting hall, at the tea shop benches and the bus stop.
@@ -134,10 +138,39 @@ export class Pedestrians {
     return { x: p[0][0], z: p[0][1], yaw: 0 };
   }
 
-  update(dt: number, camera: THREE.Vector3) {
+  /**
+   * @param obstacles people and vehicles to walk around: [position, radius]. Pedestrians step
+   * aside on the open side, slow while passing, and stop and wait if someone is right in
+   * front of them — instead of walking through (and shoving) you.
+   */
+  update(dt: number, camera: THREE.Vector3, obstacles: [THREE.Vector3, number][] = []) {
     const t = Date.now() / 1000;
     for (const w of this.walkers) {
-      const p = this.at(w, t * w.speed + w.phase);
+      const base = this.at(w, (t - w.delay) * w.speed + w.phase);
+      const hx = Math.sin(base.yaw);
+      const hz = Math.cos(base.yaw);
+      let sideTarget = 0;
+      let blocked = false;
+      let slow = false;
+      for (const [o, r] of obstacles) {
+        const dx = o.x - base.x;
+        const dz = o.z - base.z;
+        const ahead = dx * hx + dz * hz;
+        const lat = dx * hz - dz * hx; // + = to the walker's left
+        const clear = r + 0.55; // body radius + a little personal space
+        if (ahead > -0.6 && ahead < 3.2 + r && Math.abs(lat - w.side) < clear + 0.25) {
+          // Step to whichever side of them is further from where they stand.
+          sideTarget = lat > 0 ? lat - clear - 0.15 : lat + clear + 0.15;
+          sideTarget = THREE.MathUtils.clamp(sideTarget, -2.2, 2.2);
+          slow = true;
+          if (ahead > -0.2 && ahead < r + 0.9 && Math.abs(lat - w.side) < clear) blocked = true;
+        }
+      }
+      w.side += (sideTarget - w.side) * Math.min(1, dt * (sideTarget ? 2.6 : 0.9));
+      const want = blocked ? 0 : slow ? 0.55 : 1;
+      w.pace += (want - w.pace) * Math.min(1, dt * 4);
+      w.delay += dt * (1 - w.pace); // time spent waiting falls behind the shared schedule
+      const p = { x: base.x + hz * w.side, z: base.z - hx * w.side, yaw: base.yaw };
       const near = Math.hypot(p.x - camera.x, p.z - camera.z) < 70;
       w.avatar.group.visible = near;
       const y = this.world.terrain.heightAt(p.x, p.z);
@@ -150,7 +183,7 @@ export class Pedestrians {
       w.prevYaw += step;
       w.avatar.group.position.set(p.x, y, p.z);
       w.avatar.group.rotation.y = w.prevYaw;
-      w.avatar.animate(dt, { speed: w.speed, vy: 0, grounded: true, stance: 0, sit: 0, swim: false, sprint: false, yawRate: step / Math.max(dt, 1e-3), ground: this.world.terrain.heightAt });
+      w.avatar.animate(dt, { speed: w.speed * w.pace, vy: 0, grounded: true, stance: 0, sit: 0, swim: false, sprint: false, yawRate: step / Math.max(dt, 1e-3), ground: this.world.terrain.heightAt });
     }
     for (const s of this.sitters) {
       const near = s.avatar.group.position.distanceTo(camera) < 60;
