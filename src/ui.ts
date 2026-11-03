@@ -155,13 +155,21 @@ export class UI {
   }
 
   /** dots: world xz in [-half, half]. */
-  drawMap(half: number, me: { x: number; z: number; yaw: number }, others: { x: number; z: number; car?: boolean }[]) {
+  drawMap(half: number, me: { x: number; z: number; yaw: number }, others: { x: number; z: number; car?: boolean; gate?: boolean }[]) {
     const c = this.mapCanvas;
     const g = c.getContext('2d')!;
     const S = c.width;
     if (this.mapBg) g.drawImage(this.mapBg, 0, 0, S, S);
     const tx = (x: number) => ((x + half) / (2 * half)) * S;
     for (const o of others) {
+      if (o.gate) {
+        g.strokeStyle = '#ff9f1c';
+        g.lineWidth = 2;
+        g.beginPath();
+        g.arc(tx(o.x), tx(o.z), 4, 0, Math.PI * 2);
+        g.stroke();
+        continue;
+      }
       g.fillStyle = o.car ? '#ffd84a' : '#4ade80';
       g.fillRect(tx(o.x) - 2, tx(o.z) - 2, o.car ? 5 : 4, o.car ? 5 : 4);
     }

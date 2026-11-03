@@ -45,3 +45,4 @@ export const TOPIC_POS = 'pos';
 export const TOPIC_PA = 'pa';
 export const TOPIC_CAR = 'car';
 export const TOPIC_CAR_SEAT = 'carseat';
+export const TOPIC_RACE = 'race';

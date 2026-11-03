@@ -118,6 +118,7 @@ export class TouchControls {
     add(bar, 'Horn', 'KeyH', ['drive']);
     add(bar, '4L', 'KeyL', ['drive']);
     add(bar, 'Reset', 'KeyR', ['drive']);
+    add(bar, 'Race', 'KeyT', ['drive']);
     // Always
     add(top, '🎥', 'KeyV', ['foot', 'drive', 'ride', 'seated']);
     add(top, '🎤', 'KeyM', ['foot', 'drive', 'ride', 'seated']);

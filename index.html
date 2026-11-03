@@ -54,6 +54,19 @@
       #dash i.esp { background: #b8860b; color: #000; }
       #dash .rpm { width: 90px; height: 8px; padding: 0; position: relative; overflow: hidden; align-self: center; }
       #dash .rpm em { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #4da3ff, #ff5c5c); }
+      #race { top: 12px; left: 50%; transform: translateX(-50%); min-width: 220px; text-align: center; font-variant-numeric: tabular-nums; }
+      #race .row { display: flex; gap: 14px; align-items: center; justify-content: center; }
+      #race b { font-size: 30px; letter-spacing: 0.02em; }
+      #race .arrow { display: inline-block; font-size: 26px; color: #ff9f1c; transition: transform 0.12s linear; }
+      #race .dist { color: var(--muted); min-width: 4ch; }
+      #race .sub { font-size: 13px; color: var(--fg); }
+      #race .dim { color: var(--muted); font-size: 12px; }
+      #raceBig { position: fixed; left: 50%; top: 34%; transform: translate(-50%, -50%); font: 900 44px system-ui, sans-serif; color: #fff; text-shadow: 0 3px 14px #000c; pointer-events: none; z-index: 31; white-space: nowrap; }
+      #raceBig.count { font-size: 110px; color: #ffd84a; }
+      #raceBig.finish { color: #ffd84a; }
+      #raceBig.dim { font-size: 28px; color: #ddd; }
+      body.touch #race { top: 58px; transform: translateX(-50%) scale(0.85); transform-origin: top center; }
+      body.touch #raceBig { font-size: 30px; } body.touch #raceBig.count { font-size: 80px; }
       #bottom { left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; }
       #micBtn.muted { background: #5b2630; color: #ffd9de; }
       #micBtn.speaking { box-shadow: 0 0 0 3px #4ade8088; }
@@ -129,7 +142,7 @@
       <div class="panel" id="dash" hidden></div>
       <canvas id="minimap" width="180" height="180"></canvas>
       <div class="panel" id="toast" hidden></div>
-      <div class="panel" id="help">Click to look · WASD move · Shift sprint · Space jump · C crouch · Z lie down · E interact (sit · drive · hold at a mic) · V camera · G graphics · H horn · M mute · scroll to zoom</div>
+      <div class="panel" id="help">Click to look · WASD move · Shift sprint · Space jump · C crouch · Z lie down · E interact (sit · drive · hold at a mic) · T off-road race (at the start line) · V camera · G graphics · H horn · M mute · scroll to zoom</div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

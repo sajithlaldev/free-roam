@@ -5,7 +5,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { pbr, layerSurface } from './pbr';
 import { mulberry32 } from './noise';
 import { addSeat } from './registry';
-import { polyAt, type Terrain } from './terrain';
+import { polyAt, polyDist, type Terrain } from './terrain';
 import { textures } from './textures';
 import { addWind } from './wind';
 
@@ -400,6 +400,7 @@ function offroadPark(b: Batcher, scene: THREE.Object3D, t: Terrain) {
       const x = m.x + Math.cos(a) * rr;
       const z = m.z + Math.sin(a) * rr;
       const s = 0.5 + rnd() * 1.1;
+      if (polyDist(OFFROAD_TRACK, x, z).d < 4.6 + s) continue; // keep the race trail clear
       stones.push(new THREE.Matrix4().compose(new THREE.Vector3(x, t.heightAt(x, z) - 0.2 * s, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rnd(), rnd() * 6, rnd())), new THREE.Vector3(s, s, s)));
       b.physics.createCollider(RAPIER.ColliderDesc.ball(s * 0.72).setTranslation(x, t.heightAt(x, z), z));
     }

@@ -747,6 +747,16 @@ export class Car {
   }
 
   /** Flip back onto its wheels (R). */
+  /** Put the car down at (x, y, z) facing `yaw`, at rest (race respawns). */
+  teleport(x: number, y: number, z: number, yaw: number) {
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+    this.body.setTranslation({ x, y, z }, true);
+    this.body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
+    this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    this.state.speed = 0;
+  }
+
   resetUpright() {
     const p = this.position();
     const f = FORWARD.clone().applyQuaternion(this.quaternion());

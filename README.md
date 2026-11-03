@@ -21,13 +21,22 @@ KSEB poles carry sagging power lines along every road; houses have laterite comp
 
 Roads connect everything (with bridges over the canals) and street lamps, direction signs and a minimap help you find your way. Water deeper than chest height is swimmable.
 
+## Off-road Challenge
+
+A two-lap time trial round the off-road park's trail, through both mud pits, across the creek and along the flanks of the mounds. Drive any 4×4 (there's a Fortuner parked at the park gate) onto the chequered start line, stop, and press **T** (touch: **Race**). After a 3-2-1 countdown, take the nine orange gates in order; the one you're heading for glows, and the HUD shows your time, lap, gate, an arrow and the distance to the next gate (it's also circled on the minimap).
+
+- **R** puts you back on the last gate you cleared, with a 2 s penalty. **T** quits. Leaving the car or driving far off course ends the run.
+- Medals: 🥇 under 0:58 · 🥈 under 1:10 · 🥉 under 1:30. Your best time is kept per vehicle (Jimny and Fortuner separately).
+- In multiplayer, every finish is announced to the room and the HUD shows the room's best.
+- The clock follows the physics simulation, so a slow frame rate doesn't cost you time.
+
 ## Modes, rooms and invites
 
 The join screen offers **Single player** (offline: you, the town's pedestrians and AI traffic) or **Multiplayer** (voice chat with other people; no NPCs). In multiplayer you join the **public lobby**, or press **Create private room** to get an unguessable room code and an invite link (`…/?room=k7mq-x2pd`) to copy or share; anyone opening the link lands in the same room. Each room is its own LiveKit room on the server. The in-game **Invite** button shares the link again.
 
 ## Phones and tablets
 
-On touch devices a controls overlay appears: a floating analog stick on the left (push gently to walk, all the way to sprint; when driving it's throttle / brake / steering), drag anywhere on the right to look, and context buttons — Jump, Crouch, Lie, Interact (E: enter / sit / exit, hold at a mic to talk), camera and mic; in a car Brake (handbrake), Horn, 4L, Reset, Exit. Graphics start on Low on phones; landscape is recommended.
+On touch devices a controls overlay appears: a floating analog stick on the left (push gently to walk, all the way to sprint; when driving it's throttle / brake / steering), drag anywhere on the right to look, and context buttons — Jump, Crouch, Lie, Interact (E: enter / sit / exit, hold at a mic to talk), camera and mic; in a car Brake (handbrake), Horn, 4L, Reset, Race, Exit. Graphics start on Low on phones; landscape is recommended.
 
 ## Run it
 
@@ -68,7 +77,8 @@ Production: `npm run build && npm start` (the token server also serves `dist/`).
 | Space | handbrake (the tail steps out at speed) |
 | H | horn (other players hear it) |
 | L | 4H ↔ 4L transfer case (when slow) — low range for steep climbs |
-| R | reset upright if you've rolled it or got stuck |
+| R | reset upright if you've rolled it or got stuck (in a race: back to the last gate) |
+| T | start the Off-road Challenge (on its start line) / quit the race |
 | V | camera: chase → far chase → close chase → driver's-eye cockpit |
 | E | get out |
 
@@ -176,7 +186,8 @@ If you add real clips to the model (names matching idle / walk / run), they're u
 | `src/world/registry.ts` | Rooms, PA systems, speakers, seats (built deterministically; ids go over the wire) |
 | `src/player.ts` | Local player (movement, stances, swimming, seats, cars, cameras) and remote players |
 | `src/procedural.ts` | The animation system |
-| `src/car.ts` | Jimny model, drivetrain and physics |
+| `src/car.ts` | Jimny and Fortuner models, drivetrain and physics |
+| `src/race.ts` | Off-road Challenge: gates, timing, medals, HUD |
 | `src/voice.ts` | Proximity voice, room occlusion, PA routing, engine sound |
 | `src/net.ts` | LiveKit room + compact binary data protocol (`tools/net-protocol.html` round-trips it) |
 | `server/token.ts` | LiveKit token minting |

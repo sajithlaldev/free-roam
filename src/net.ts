@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { ConnectionState, Room, RoomEvent, Track, type RemoteParticipant } from 'livekit-client';
 import type { CarState } from './car';
-import { TOPIC_CAR, TOPIC_CAR_SEAT, TOPIC_PA, TOPIC_POS } from './config';
+import { TOPIC_CAR, TOPIC_CAR_SEAT, TOPIC_PA, TOPIC_POS, TOPIC_RACE } from './config';
 import { packFlags, unpackFlags, type NetState } from './player';
 
 export interface NetHandlers {
@@ -12,6 +12,7 @@ export interface NetHandlers {
   onPA(identity: string, pa: number, on: boolean): void;
   onCarPose(identity: string, car: number, seq: number, p: THREE.Vector3, q: THREE.Quaternion, st: CarState, parked: boolean): void;
   onCarSeat(identity: string, car: number, seat: number, on: boolean): void;
+  onRace(identity: string, ms: number, vehicle: number): void;
   onDisconnected(): void;
 }
 
@@ -22,6 +23,7 @@ export interface NetHandlers {
  *                       gear i8 · flags u8 (braking | low | parked)                     = 47 B
  *  pa   (reliable)      pa u8 · on u8
  *  carseat (reliable)   car u8 · seat u8 · on u8
+ *  race (reliable)      finish time ms u32 · vehicle u8 (0 Jimny, 1 Fortuner)
  */
 export class Net {
   readonly room = new Room({
@@ -79,6 +81,8 @@ export class Net {
             this.h.onPA(p.identity, v.getUint8(0), v.getUint8(1) === 1);
           } else if (topic === TOPIC_CAR_SEAT && payload.byteLength >= 3) {
             this.h.onCarSeat(p.identity, v.getUint8(0), v.getUint8(1), v.getUint8(2) === 1);
+          } else if (topic === TOPIC_RACE && payload.byteLength >= 5) {
+            this.h.onRace(p.identity, v.getUint32(0, true), v.getUint8(4));
           }
         } catch (e) {
           console.warn('bad packet', topic, e);
@@ -165,6 +169,14 @@ export class Net {
 
   sendCarSeat(car: number, seat: number, on: boolean) {
     this.send(new Uint8Array([car, seat, on ? 1 : 0]), TOPIC_CAR_SEAT, true);
+  }
+
+  sendRace(ms: number, vehicle: number) {
+    const b = new ArrayBuffer(5);
+    const v = new DataView(b);
+    v.setUint32(0, Math.round(ms) >>> 0, true);
+    v.setUint8(4, vehicle);
+    this.send(new Uint8Array(b), TOPIC_RACE, true);
   }
 
   disconnect() {

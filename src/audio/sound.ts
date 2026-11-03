@@ -282,6 +282,21 @@ export class SoundSystem {
     src.start();
   }
 
+  /** Non-spatial UI tone (race beeps, chimes): `when` is seconds from now. */
+  tone(freq: number, dur: number, gain = 0.25, when = 0, type: OscillatorType = 'triangle') {
+    const t = this.ctx.currentTime + when;
+    const o = this.ctx.createOscillator();
+    o.type = type;
+    o.frequency.value = freq;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain, t + 0.012);
+    g.gain.setTargetAtTime(0, t + dur * 0.6, dur * 0.25);
+    o.connect(g).connect(this.sfx);
+    o.start(t);
+    o.stop(t + dur * 2 + 0.1);
+  }
+
   vehicle(diesel: boolean, horn: [number, number]): VehicleAudio {
     return new VehicleAudio(this, diesel, horn);
   }

@@ -15,7 +15,7 @@ const noise = new Simplex2(20251103);
 // ── geometry helpers ─────────────────────────────────────────────────────────
 
 /** Distance from p to polyline, plus which segment / how far along the line (metres). */
-function polyDist(pts: V2[], x: number, z: number): { d: number; s: number } {
+export function polyDist(pts: V2[], x: number, z: number): { d: number; s: number } {
   let best = Infinity;
   let bestS = 0;
   let acc = 0;
@@ -277,7 +277,16 @@ function finalHeight(x: number, z: number, roads: RoadProfile[]): { h: number; r
   if (inRect(TEMPLE_POND, x, z)) h = -1.8;
   {
     const { d } = polyDist(OFFROAD_CREEK, x, z);
-    if (d < 8) h = lerp(-0.45 + 0.1 * noise.noise(x / 2, z / 2), h, smoothstep(2.2, 8, d)); // shallow ford
+    // Where the trail fords the creek the banks are cut back into long ramps (the creek runs
+    // right along the big mound's flank, which would otherwise leave a wall).
+    let ramp = 0;
+    if (d < 22) {
+      let mound = 0;
+      for (const m of OFFROAD_MOUNDS) mound = Math.max(mound, smoothstep(m.r * 2.4, m.r * 1.4, Math.hypot(x - m.x, z - m.z)));
+      if (mound > 0) ramp = mound * (1 - smoothstep(3, 8, polyDist(OFFROAD_TRACK, x, z).d));
+    }
+    const bank = 8 + 12 * ramp;
+    if (d < bank) h = lerp(-0.45 + 0.1 * noise.noise(x / 2, z / 2), h, smoothstep(2.2, bank, d)); // shallow ford
   }
   return { h, road: roadD };
 }

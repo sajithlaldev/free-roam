@@ -4,6 +4,7 @@ import { Car, FORTUNER, JIMNY, type CarInput } from './car';
 import { AVATAR, CAR_HZ, CAR_PARKED_HEARTBEAT_MS, POS_HZ } from './config';
 import { Net } from './net';
 import { Pedestrians } from './npc';
+import { MEDALS, OffroadRace, fmtTime } from './race';
 import { LOBBY, newRoomCode, roomFromUrl, setUrlRoom, shareInvite } from './rooms';
 import { isTouch } from './device';
 import { TouchControls } from './touch';
@@ -54,6 +55,14 @@ const cars = CAR_SPAWNS.map((s, i) => {
   const y = world.terrain.heightAt(s.x, s.z) + spec.wheelRadius + 0.03;
   return new Car(i, world.physics, world.scene, s.x, y, s.z, s.yaw, s.color, spec);
 });
+const race = new OffroadRace(world.scene, world.terrain, () => audio.sys);
+race.onMessage = (t) => ui.toast(t);
+race.onFinish = (r) => {
+  const medal = MEDALS.find(([m]) => m === r.medal);
+  ui.toast(`Off-road Challenge: ${fmtTime(r.ms)}${medal ? ` ${medal[1]}` : ''}${r.best ? ' · personal best' : ''}`);
+  net?.sendRace(r.ms, r.model === 'fortuner' ? 1 : 0);
+  if (net) race.remoteFinish('you', r.ms, r.model);
+};
 let traffic: Traffic | null = null;
 let pedestrians: Pedestrians | null = null;
 ui.ready();
@@ -167,6 +176,11 @@ ui.onJoin(async (name) => {
         else if (c.seats[seat] === id) c.seats[seat] = null;
         vehAudio.get(c.id)?.door();
       },
+      onRace: (id, ms, v) => {
+        const name = remotes.get(id)?.name ?? 'Someone';
+        race.remoteFinish(name, ms, v === 1 ? 'fortuner' : 'jimny');
+        ui.toast(`🏁 ${name} finished the Off-road Challenge in ${fmtTime(ms)} (${v === 1 ? 'Fortuner' : 'Jimny'})`);
+      },
       onDisconnected: () => ui.setStatus('Disconnected — reload to rejoin'),
     });
     try {
@@ -190,7 +204,7 @@ ui.onJoin(async (name) => {
   ui.setInviteVisible(!SOLO);
   ui.setMic(net?.micAvailable ? 'on' : 'unavailable');
   requestAnimationFrame(frame);
-  if (import.meta.env.DEV) Object.assign(window, { __vw: { world, player, remotes, voice, net, cars, registry, pedestrians, traffic } });
+  if (import.meta.env.DEV) Object.assign(window, { __vw: { world, player, remotes, voice, net, cars, registry, pedestrians, traffic, race } });
 });
 
 async function toggleMic() {
@@ -257,8 +271,11 @@ let lastPos = 0;
 let lastCar = 0;
 let lastParked = 0;
 let lastUi = 0;
+/** Simulated time last frame (the race clock follows the physics, so slow frames aren't penalised). */
+let simDt = 0;
 
 function carInput(): CarInput {
+  if (race.frozen) return { throttle: 0, brake: 0, steer: 0, handbrake: true }; // (brake at a standstill = reverse)
   const k = (c: string) => player.isDown(c);
   const a = player.analog;
   if (Math.hypot(a.x, a.y) > 0.1) return { throttle: Math.max(0, a.y), brake: Math.max(0, -a.y), steer: -a.x, handbrake: k('Space') };
@@ -284,7 +301,8 @@ function frame(now: number) {
     hint = driving ? 'E get out · L 4H/4L · R reset if stuck · Space handbrake' : 'E get out';
     if (pressE) leaveCar();
     if (driving && player.tapped('KeyL') && Math.abs(driving.state.speed) < 3) driving.state.low = !driving.state.low;
-    if (driving && player.tapped('KeyR')) {
+    if (driving && race.running && player.tapped('KeyR')) race.respawn();
+    else if (driving && player.tapped('KeyR')) {
       const up = new THREE.Vector3(0, 1, 0).applyQuaternion(driving.quaternion());
       if (up.y < 0.6 || Math.abs(driving.state.speed) < 1) driving.resetUpright();
     }
@@ -309,6 +327,8 @@ function frame(now: number) {
     }
   }
   if (player.car || player.seat >= 0) announcer?.update(player.pos, false, false, now);
+  const raceHint = race.update(simDt, player.car?.seat === 0 ? player.car.car : null, player.tapped('KeyT'), world.camera);
+  if (raceHint) hint = raceHint;
   ui.setHint(hint, live);
   touch?.setMode(player.car ? (player.car.seat === 0 ? 'drive' : 'ride') : player.seat >= 0 ? 'seated' : 'foot', hint);
   driving = player.car?.seat === 0 ? player.car.car : null; // (may have changed above)
@@ -324,6 +344,7 @@ function frame(now: number) {
     steps++;
   }
   if (steps === 5) acc = 0;
+  simDt = steps * STEP;
 
   // ── per-frame updates ──
   player.update(dt);
@@ -417,6 +438,7 @@ function frame(now: number) {
       ...[...remotes.values()].map((r) => ({ x: r.avatar.group.position.x, z: r.avatar.group.position.z })),
       ...cars.map((c) => ({ x: c.position().x, z: c.position().z, car: true })),
       ...(traffic?.positions() ?? []).map((p) => ({ x: p.x, z: p.z, car: true })),
+      ...(driving && (race.active || Math.hypot(race.target.x - g.x, race.target.z - g.z) < 120) ? [{ x: race.target.x, z: race.target.z, gate: true }] : []),
     ]);
   }
 
