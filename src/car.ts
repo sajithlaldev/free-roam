@@ -216,6 +216,7 @@ export interface CarState {
   throttle: number;
   braking: boolean;
   low: boolean;
+  horn?: boolean;
 }
 
 // ── visuals ──────────────────────────────────────────────────────────────────
@@ -627,6 +628,12 @@ export class Car {
   /** The sprung body (all visuals except the wheels). */
   readonly cabin = new THREE.Group();
   private lean = { roll: 0, rollV: 0, pitch: 0, pitchV: 0, prev: new THREE.Vector3(), acc: new THREE.Vector3(), init: false };
+  /** 0..1 tyre slip (sideways slide or wheelspin), for skid sounds. */
+  slip = 0;
+  /** Strength of the latest suspension hit (consumed by the audio). */
+  bumpHit = 0;
+  private prevSusp = [0, 0, 0, 0];
+  private prevYaw = 0;
   /** Stability control is intervening (HUD light). */
   esp = false;
   private shiftTimer = 0;
@@ -869,6 +876,16 @@ export class Car {
     }
 
     for (let i = 0; i < 4; i++) this.wheelSpin[i] = this.ctrl.wheelRotation(i) ?? 0;
+
+    // Audio cues: sideways slide / handbrake / wheelspin, and sharp suspension hits.
+    const spin = engineForce / 4 > 0.8 * this.spec.tcs * this.spec.frictionSlip * ((this.spec.mass * 9.81) / 4) ? 0.6 : 0;
+    this.slip = Math.max(slipAngle * 3.2, inp.handbrake && speed > 3 ? 0.75 : 0, spin * (speed < 8 ? 1 : 0), brake > 0.9 && speed > 6 ? 0.45 : 0);
+    for (let i = 0; i < 4; i++) {
+      const L = this.ctrl.wheelSuspensionLength(i) ?? this.spec.restLength;
+      const d = Math.abs(L - this.prevSusp[i]);
+      if (d > 0.03) this.bumpHit = Math.max(this.bumpHit, d * 14);
+      this.prevSusp[i] = L;
+    }
   }
 
   /** Network: a pose from the remote driver (or the parked-pose heartbeat). */
@@ -901,6 +918,12 @@ export class Car {
       this.body.setNextKinematicRotation(q);
       // Wheels roll at the reported speed.
       for (let w = 0; w < 4; w++) this.wheelSpin[w] += (this.state.speed / this.spec.wheelRadius) * dt;
+      // Estimated slip from how hard it's turning (for skid sounds on other players' cars).
+      const f = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+      const yaw = Math.atan2(f.x, f.z);
+      const yr = Math.atan2(Math.sin(yaw - this.prevYaw), Math.cos(yaw - this.prevYaw)) / Math.max(dt, 1e-3);
+      this.prevYaw = yaw;
+      this.slip = THREE.MathUtils.clamp((Math.abs(yr * this.state.speed) / 9.81 - 0.65) * 2, 0, 1);
     }
     this.syncVisual();
     this.updateLean(dt);

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Avatar } from './player';
+import { wireAvatarSounds } from './audio/index';
 import { BUS_STOP, MAIDAN, TEMPLE, coastX, type V2 } from './world/layout';
 import { registry } from './world/registry';
 import { polyAt } from './world/terrain';
@@ -81,6 +82,7 @@ export class Pedestrians {
     ];
     routes.forEach(([path, closed, speed], i) => {
       const avatar = new Avatar(NAMES[i % NAMES.length], `npc-${i}-${NAMES[i]}`);
+      wireAvatarSounds(avatar);
       avatar.setLabelVisible(false);
       world.scene.add(avatar.group);
       const body = world.physics.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -60, 0));

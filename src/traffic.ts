@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { FORTUNER, JIMNY, buildFortuner, buildJimny, type VehicleSpec, type Visual } from './car';
-import { EngineSound, type Voice } from './voice';
+import type { SoundSystem, VehicleAudio } from './audio/sound';
 import { ROAD_WIDTH } from './world/layout';
 import { polyAt, type RoadProfile } from './world/terrain';
 import type { World } from './world/index';
@@ -23,7 +23,8 @@ interface Vehicle {
   cur: number; // current speed (m/s) after braking
   spin: number;
   yaw: number;
-  engine?: EngineSound;
+  sound?: VehicleAudio;
+  blockedFor: number;
 }
 
 const LANE = ROAD_WIDTH / 4; // centre of a lane
@@ -50,7 +51,7 @@ export class Traffic {
       world.scene.add(visual.root);
       const body = world.physics.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -50, 0));
       for (const [hx, hy, hz, cx, cy, cz] of spec.colliders) world.physics.createCollider(RAPIER.ColliderDesc.cuboid(hx, hy, hz).setTranslation(cx, cy, cz), body);
-      this.vehicles.push({ spec, visual, body, road: roads[ri], speed, phase, delay: 0, cur: speed, spin: 0, yaw: 0 });
+      this.vehicles.push({ spec, visual, body, road: roads[ri], speed, phase, delay: 0, cur: speed, spin: 0, yaw: 0, blockedFor: 0 });
     });
   }
 
@@ -96,7 +97,7 @@ export class Traffic {
     return { x: p.x + lx * LANE, y, z: p.z + lz * LANE, yaw: Math.atan2(ex, ez) };
   }
 
-  update(dt: number, obstacles: THREE.Vector3[], voice: Voice | null) {
+  update(dt: number, obstacles: THREE.Vector3[], sys: SoundSystem | null) {
     const t = Date.now() / 1000;
     for (const v of this.vehicles) {
       // Look ahead for something in the lane.
@@ -133,10 +134,16 @@ export class Traffic {
       });
       v.visual.steeringWheel.rotation.z = -steer * 9;
       v.visual.brakeMat.emissiveIntensity = blocked ? 2.2 : 0.15;
-      if (voice) {
-        v.engine ??= new EngineSound(voice, v.spec.diesel);
-        const rpm = v.spec.idleRpm + v.cur * (v.spec.diesel ? 110 : 190);
-        v.engine.update(root.position, true, rpm, blocked ? 0 : 0.35, v.cur);
+      v.blockedFor = blocked ? v.blockedFor + dt : 0;
+      if (sys) {
+        v.sound ??= sys.vehicle(v.spec.diesel, v.spec.model === 'fortuner' ? [340, 428] : [415, 520]);
+        // Rough gear model: rpm climbs with speed, drops at each "shift".
+        const kmh = v.cur * 3.6;
+        const gearBand = v.spec.diesel ? 22 : 18;
+        const rpm = v.spec.idleRpm + ((kmh % gearBand) / gearBand) * (v.spec.diesel ? 1300 : 2200) + Math.min(1, kmh / 10) * 600;
+        const accel = Math.abs(target - v.cur) > 0.5 && target > v.cur;
+        const honk = v.blockedFor > 1.2 && v.blockedFor % 3 < 0.45; // Kerala etiquette
+        v.sound.update(dt, { pos: root.position, running: true, rpm, load: accel ? 0.7 : blocked ? 0.05 : 0.3, speed: v.cur, slip: 0, surface: 'asphalt', depth: 0, horn: honk });
       }
     }
   }

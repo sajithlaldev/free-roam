@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { cloneAvatar, getAvatarTemplate } from './assets';
 import { AVATAR, INTERP_DELAY_MS } from './config';
+import { wireAvatarSounds } from './audio/index';
 import type { Car } from './car';
 import { ProceduralRig, findHumanoidBone, type AnimInput, type SitMode, type Stance } from './procedural';
 import { SPAWN, WATER_Y } from './world/layout';
@@ -55,6 +56,10 @@ export class Avatar {
   private body = new THREE.Group();
   private pose = new THREE.Group();
   private rig: ProceduralRig | null = null;
+  /** Sound hooks (forwarded to the rig once the model has loaded). */
+  onStep?: (side: number, strength: number) => void;
+  onLand?: (strength: number) => void;
+  onStroke?: () => void;
   private mixer?: THREE.AnimationMixer;
   private actions: Partial<Record<'idle' | 'walk' | 'run', THREE.AnimationAction>> = {};
   private current?: THREE.AnimationAction;
@@ -93,6 +98,11 @@ export class Avatar {
         for (const g of ['idle', 'walk', 'run'] as const) if (t[g]) this.actions[g] = this.mixer.clipAction(t[g]!);
       } else {
         this.rig = ProceduralRig.create(model, this.pose, this.group);
+        if (this.rig) {
+          this.rig.onStep = (side, k) => this.onStep?.(side, k);
+          this.rig.onLand = (k) => this.onLand?.(k);
+          this.rig.onStroke = () => this.onStroke?.();
+        }
       }
     });
   }
@@ -195,6 +205,7 @@ export class RemotePlayer {
     private world: World,
   ) {
     this.avatar = new Avatar(name, identity);
+    wireAvatarSounds(this.avatar);
     this.avatar.group.visible = false;
     // Kinematic capsule so cars and the local player bump into remote players.
     this.body = world.physics.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -100, 0));
@@ -339,6 +350,7 @@ export class LocalPlayer {
     name: string,
   ) {
     this.avatar = new Avatar(name, name);
+    wireAvatarSounds(this.avatar);
     this.avatar.setLabelVisible(false);
     world.scene.add(this.avatar.group);
     const p = world.physics;

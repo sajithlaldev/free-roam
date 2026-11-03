@@ -74,6 +74,12 @@ interface Side {
 }
 
 export class ProceduralRig {
+  /** Fired when a foot plants (side +1 left / −1 right, strength ≈ speed-scaled). */
+  onStep?: (side: number, strength: number) => void;
+  /** Fired on landing from a jump/fall (strength 0..1). */
+  onLand?: (strength: number) => void;
+  /** Fired at each swim stroke. */
+  onStroke?: () => void;
   private b: Partial<Record<Name, THREE.Object3D>> = {};
   private rest = new Map<THREE.Object3D, THREE.Quaternion>();
   private sides: Side[] = [];
@@ -219,6 +225,7 @@ export class ProceduralRig {
 
     // Landing impact (absorbed by the knees), proportional to the fall speed.
     if (inp.grounded && !this.wasGrounded && this.lastVy < -2.2) this.impact = Math.min(1, -this.lastVy / 9);
+    if (inp.grounded && !this.wasGrounded && this.lastVy < -1.2 && !sitting) this.onLand?.(Math.min(1, -this.lastVy / 7));
     this.impact = approach(this.impact, 0, 7, dt);
     this.wasGrounded = inp.grounded;
     this.lastVy = inp.vy;
@@ -237,7 +244,14 @@ export class ProceduralRig {
     let freq = THREE.MathUtils.lerp(fWalk, fRun, w.run) * (1 + 0.2 * w.crouch);
     if (turningInPlace) freq = 1.3;
     if (pitchW > 0.5) freq = 0.7 + 0.8 * s; // crawl
+    const prevPhase = this.phase;
     this.phase = (this.phase + Math.min(1.9, freq) * dt) % 1;
+    // Footfalls: the left foot plants as the cycle wraps, the right one at half-cycle.
+    const stepping = (w.move > 0.35 || turningInPlace) && inp.grounded && !sitting && !inp.swim;
+    const strength = (0.45 + 0.17 * s) * (inp.stance === 1 ? 0.55 : inp.stance === 2 ? 0.35 : 1);
+    if (stepping && prevPhase > this.phase) this.onStep?.(1, strength);
+    if (stepping && prevPhase < 0.5 && this.phase >= 0.5) this.onStep?.(-1, strength);
+    if (inp.swim && s > 0.3 && prevPhase > this.phase) this.onStroke?.();
     const stride = turningInPlace ? 0 : s / Math.max(0.5, freq); // metres per cycle
     // Stance (duty) fraction: ~0.6 walking, ~0.34 running; capped so the contact length stays
     // within what the leg can reach (sprinting is short ground contacts).

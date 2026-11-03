@@ -1,0 +1,57 @@
+<!doctype html><html><body><pre id="o">rendering…</pre><script type="module">
+// Audio lab: renders the synthesised sounds offline, measures them, and offers WAV downloads.
+import { ENGINE_WORKLET } from '/src/audio/engineWorklet.ts';
+import { SoundSystem } from '/src/audio/sound.ts';
+const SR = 44100;
+function stats(buf) {
+  const d = buf.getChannelData(0);
+  let sum = 0, peak = 0, nan = 0, zc = 0;
+  for (let i = 0; i < d.length; i++) { const v = d[i]; if (!Number.isFinite(v)) nan++; sum += v * v; peak = Math.max(peak, Math.abs(v)); if (i && (d[i - 1] < 0) !== (v < 0)) zc++; }
+  return { seconds: +(d.length / SR).toFixed(2), rmsDb: +(10 * Math.log10(sum / d.length + 1e-12)).toFixed(1), peak: +peak.toFixed(3), nan, brightnessHz: Math.round((zc / 2) / (d.length / SR)) };
+}
+function wav(buf) {
+  const d = buf.getChannelData(0), n = d.length, b = new ArrayBuffer(44 + n * 2), v = new DataView(b);
+  const w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, SR, true); v.setUint32(28, SR * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, d[i])) * 32767, true);
+  let s = ''; const u = new Uint8Array(b); for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+async function engine(diesel, idle, red) {
+  const ctx = new OfflineAudioContext(1, SR * 9, SR);
+  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([ENGINE_WORKLET], { type: 'application/javascript' })));
+  const n = new AudioWorkletNode(ctx, 'engine-sim', { numberOfInputs: 0, outputChannelCount: [1], processorOptions: { cylinders: 4, diesel } });
+  const rpm = n.parameters.get('rpm'), load = n.parameters.get('load'), gain = n.parameters.get('gain');
+  gain.setValueAtTime(0.7, 0);
+  rpm.setValueAtTime(idle, 0); load.setValueAtTime(0.05, 0);
+  // idle 1.5 s → full-throttle pull to near redline (4 s) → lift off and coast down (2.5 s) → idle
+  rpm.setValueAtTime(idle, 1.5); rpm.linearRampToValueAtTime(red * 0.92, 5.5); load.setValueAtTime(1, 1.5);
+  load.setValueAtTime(0.02, 5.5); rpm.linearRampToValueAtTime(idle * 1.3, 8); rpm.linearRampToValueAtTime(idle, 9);
+  n.connect(ctx.destination);
+  return ctx.startRendering();
+}
+async function steps() {
+  const ctx = new OfflineAudioContext(1, SR * 13, SR);
+  const S = new SoundSystem(ctx, ctx.destination);
+  const surfaces = ['grass', 'soil', 'sand', 'gravel', 'asphalt', 'concrete', 'wood', 'tile', 'mud', 'water'];
+  const lst = { positionX: 0 }; void lst;
+  let t = 0.2;
+  for (const s of surfaces) {
+    for (let k = 0; k < 4; k++) {
+      const src = ctx.createBufferSource();
+      src.buffer = S['steps'].get(s)[k % 5];
+      const g = ctx.createGain(); g.gain.value = 0.6;
+      src.connect(g).connect(ctx.destination); src.start(t); t += 0.27;
+    }
+    t += 0.2;
+  }
+  return ctx.startRendering();
+}
+const out = {};
+const jim = await engine(false, 800, 6200); out.jimny = { ...stats(jim), wav: wav(jim) };
+const ftn = await engine(true, 750, 4400); out.fortuner = { ...stats(ftn), wav: wav(ftn) };
+const st = await steps(); out.footsteps = { ...stats(st), wav: wav(st) };
+window.__res = out;
+document.getElementById('o').textContent = JSON.stringify(Object.fromEntries(Object.entries(out).map(([k, v]) => [k, { ...v, wav: undefined }])), null, 1);
+</script></body></html>

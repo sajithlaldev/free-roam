@@ -7,9 +7,12 @@ import { Pedestrians } from './npc';
 import { Traffic } from './traffic';
 import { CAM_LABEL, LocalPlayer, RemotePlayer } from './player';
 import { UI, type PlayerRow } from './ui';
-import { EngineSound, Voice, gainAt } from './voice';
+import { Voice, gainAt } from './voice';
+import { Ambience } from './audio/ambience';
+import { audio, surfaceAt } from './audio/index';
+import { SoundSystem, type VehicleAudio } from './audio/sound';
 import { World } from './world/index';
-import { CAR_SPAWNS, WORLD_HALF } from './world/layout';
+import { CAR_SPAWNS, WATER_Y, WORLD_HALF } from './world/layout';
 import { registry, roomAt } from './world/registry';
 
 // ?solo skips networking (walk and drive alone).
@@ -36,7 +39,10 @@ let voice: Voice | null = null;
 let announcer: Announcer | null = null;
 let player: LocalPlayer;
 let me = 'me';
-const engines = new Map<number, EngineSound>();
+const vehAudio = new Map<number, VehicleAudio>();
+let ambience: Ambience | null = null;
+audio.terrain = world.terrain;
+const hornFor = (c: Car): [number, number] => (c.spec.model === 'fortuner' ? [340, 428] : [415, 520]);
 
 function addRemote(identity: string, name: string) {
   if (remotes.has(identity)) return;
@@ -73,6 +79,7 @@ function enterCar(car: Car, seat: number) {
   if (!claimSeat(car, seat, me)) return;
   net?.sendCarSeat(car.id, seat, true);
   player.enterCar(car, seat);
+  vehAudio.get(car.id)?.door();
   if (seat === 0) car.takeControl();
 }
 
@@ -80,6 +87,7 @@ function leaveCar(announce = true) {
   const c = player.car;
   if (!c) return;
   player.exitCar();
+  vehAudio.get(c.car.id)?.door();
   if (c.car.seats[c.seat] === me) c.car.seats[c.seat] = null;
   if (c.seat === 0) c.car.release();
   if (announce) net?.sendCarSeat(c.car.id, c.seat, false);
@@ -87,6 +95,8 @@ function leaveCar(announce = true) {
 
 ui.onJoin(async (name) => {
   voice = new Voice(); // inside the click: unlocks audio
+  audio.sys = new SoundSystem(voice.ctx, voice.master);
+  ambience = new Ambience(audio.sys, world.terrain);
   if (!SOLO) {
     net = new Net({
       onPlayerJoined: addRemote,
@@ -117,6 +127,7 @@ ui.onJoin(async (name) => {
         if (!c || seat > 3) return;
         if (on) claimSeat(c, seat, id);
         else if (c.seats[seat] === id) c.seats[seat] = null;
+        vehAudio.get(c.id)?.door();
       },
       onDisconnected: () => ui.setStatus('Disconnected — reload to rejoin'),
     });
@@ -271,7 +282,8 @@ function frame(now: number) {
   // ── per-frame updates ──
   player.update(dt);
   const obstacles = [player.avatar.group.position, ...cars.map((c) => c.visual.root.position), ...[...remotes.values()].map((r) => r.avatar.group.position)];
-  traffic.update(dt, obstacles, voice);
+  traffic.update(dt, obstacles, audio.sys);
+  if (driving) driving.state.horn = player.isDown('KeyH');
   pedestrians.update(dt, world.camera.position);
   for (const c of cars) c.update(now, dt);
   for (const r of remotes.values()) {
@@ -285,11 +297,29 @@ function frame(now: number) {
   if (voice) {
     world.camera.getWorldDirection(fwd);
     voice.setListener(head, fwd, myRoom);
+    ambience?.update(dt, head);
     for (const c of cars) {
+      const sys = audio.sys;
+      if (!sys) break;
+      let va = vehAudio.get(c.id);
+      if (!va) vehAudio.set(c.id, (va = sys.vehicle(c.spec.diesel, hornFor(c))));
       const running = !!c.seats[0] || (c.simulating && !!driving);
-      let e = engines.get(c.id);
-      if (!e && running) engines.set(c.id, (e = new EngineSound(voice, c.spec.diesel)));
-      e?.update(c.position(), running, c.state.rpm, c.state.throttle, c.state.speed);
+      const p = c.position();
+      const wheelBottom = p.y - c.spec.wheelRadius - 0.04;
+      const load = c.simulating ? c.state.throttle : running && Math.abs(c.state.speed) > 1 ? 0.35 : 0.05;
+      va.update(dt, {
+        pos: p,
+        running,
+        rpm: c.state.rpm,
+        load,
+        speed: c.state.speed,
+        slip: c.slip,
+        surface: surfaceAt(p.x, wheelBottom, p.z),
+        depth: Math.max(0, WATER_Y - wheelBottom),
+        horn: !!c.state.horn && running,
+      });
+      if (c.bumpHit > 0.45) va.bump(c.bumpHit);
+      c.bumpHit = 0;
     }
   }
 

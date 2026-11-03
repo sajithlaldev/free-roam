@@ -58,6 +58,7 @@ Production: `npm run build && npm start` (the token server also serves `dist/`).
 | W / S | accelerate / brake; hold S when stopped to reverse |
 | A / D | steer |
 | Space | handbrake (the tail steps out at speed) |
+| H | horn (other players hear it) |
 | L | 4H ↔ 4L transfer case (when slow) — low range for steep climbs |
 | R | reset upright if you've rolled it or got stuck |
 | V | camera: chase → far chase → close chase → driver's-eye cockpit |
@@ -129,6 +130,15 @@ Measured with `tools/car-physics.html` (open it while `npm run dev` is running):
 | Reverse | limited to 25 km/h |
 
 Only the driver's client simulates a car; everyone else receives its pose at 20 Hz and interpolates it on a kinematic body (so you still collide with it). When the driver gets out, their client lets it settle, then keeps re-broadcasting its parked pose for late joiners. Simultaneous seat grabs are resolved deterministically (lower identity wins).
+
+## Sound (`src/audio/`)
+
+Everything is synthesised in the browser — no audio files.
+
+- **Engines** run as an AudioWorklet combustion simulation: the crank turns at the live rpm, each of the four cylinders fires once per two revolutions with a pressure pulse sized by engine load (and a little cycle-to-cycle variation), through exhaust resonances and a load-dependent low-pass, plus intake roar. The diesel adds injector clatter on every firing and a turbo whistle that rises with boost. Pitch tracks rpm exactly (checked by FFT in `tools/audio-lab.html`, which also renders WAVs to listen to).
+- **Tyres**: rolling noise tuned per surface (asphalt hiss, gravel crunch, grass swish, mud), squeal from real tyre slip on hard surfaces, scrabble on dirt; suspension thumps, crash crunches, splashes into water, door thunks, two-tone horns. Vehicles have their own, quieter bus.
+- **Footsteps** are triggered by the animation at the moment each foot plants, with a sound for each surface underfoot — grass, laterite soil, sand, gravel/rock, asphalt, concrete, wooden decks, indoor tiles (with room reverb), mud and shallow water — heavier when running, a thud on landing, strokes when swimming.
+- **Ambience** follows where you are: waves from the nearest stretch of coast with breaking surf, water lapping along the backwaters, wind that gusts with the swaying trees and blows harder up the hills, cicadas, Kerala birds in the trees (koel, mynas, crows), temple bells near the temple, distant auto horns in town, ceiling fans in the hall. Traffic honks if you block it.
 
 ## Animation (`src/procedural.ts`)
 

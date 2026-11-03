@@ -73,6 +73,7 @@ export class Net {
               throttle: 0,
               braking: !!(flags & 1),
               low: !!(flags & 2),
+              horn: !!(flags & 8),
             }, !!(flags & 4));
           } else if (topic === TOPIC_PA && payload.byteLength >= 2) {
             this.h.onPA(p.identity, v.getUint8(0), v.getUint8(1) === 1);
@@ -153,7 +154,7 @@ export class Net {
     v.setUint32(1, this.carSeq++ >>> 0, true);
     [p.x, p.y, p.z, q.x, q.y, q.z, q.w, st.steer, st.speed, st.rpm].forEach((n, i) => v.setFloat32(5 + i * 4, n, true));
     v.setInt8(45, st.gear);
-    v.setUint8(46, (st.braking ? 1 : 0) | (st.low ? 2 : 0) | (parked ? 4 : 0));
+    v.setUint8(46, (st.braking ? 1 : 0) | (st.low ? 2 : 0) | (parked ? 4 : 0) | (st.horn ? 8 : 0));
     // Parked heartbeats go reliable so late joiners surely get them; live driving is lossy.
     this.send(new Uint8Array(b), TOPIC_CAR, parked);
   }
