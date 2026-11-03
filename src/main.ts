@@ -4,6 +4,9 @@ import { Car, FORTUNER, JIMNY, type CarInput } from './car';
 import { AVATAR, CAR_HZ, CAR_PARKED_HEARTBEAT_MS, POS_HZ } from './config';
 import { Net } from './net';
 import { Pedestrians } from './npc';
+import { LOBBY, newRoomCode, roomFromUrl, setUrlRoom, shareInvite } from './rooms';
+import { isTouch } from './device';
+import { TouchControls } from './touch';
 import { Traffic } from './traffic';
 import { CAM_LABEL, LocalPlayer, RemotePlayer } from './player';
 import { UI, type PlayerRow } from './ui';
@@ -16,10 +19,32 @@ import { CAR_SPAWNS, WATER_Y, WORLD_HALF } from './world/layout';
 import { registry, roomAt } from './world/registry';
 
 // ?solo skips networking (walk and drive alone).
-const SOLO = new URLSearchParams(location.search).has('solo');
+/**
+ * Single player: offline, with pedestrians and AI traffic. Multiplayer: a room with other
+ * people (public lobby or an invite link) — no NPCs. A room link opens straight into
+ * multiplayer; otherwise the last choice is remembered (first run: single player).
+ */
+type GameMode = 'single' | 'multi';
+const params = new URLSearchParams(location.search);
+let mode: GameMode = params.has('solo') ? 'single' : params.has('room') ? 'multi' : (() => {
+  try {
+    return (localStorage.getItem('vw-mode') as GameMode) || 'single';
+  } catch {
+    return 'single';
+  }
+})();
+let SOLO = mode === 'single';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const ui = new UI();
+let room = roomFromUrl();
+ui.bindMode({ get: () => mode, set: (m) => (mode = m) });
+ui.bindRooms({
+  get: () => room,
+  create: () => setUrlRoom((room = newRoomCode())),
+  lobby: () => setUrlRoom((room = LOBBY)),
+  share: () => shareInvite(room),
+});
 ui.setCredit(AVATAR.credit);
 const world = await World.create(canvas);
 ui.setMapBackground(world.minimap(180));
@@ -29,8 +54,8 @@ const cars = CAR_SPAWNS.map((s, i) => {
   const y = world.terrain.heightAt(s.x, s.z) + spec.wheelRadius + 0.03;
   return new Car(i, world.physics, world.scene, s.x, y, s.z, s.yaw, s.color, spec);
 });
-const traffic = new Traffic(world);
-const pedestrians = new Pedestrians(world);
+let traffic: Traffic | null = null;
+let pedestrians: Pedestrians | null = null;
 ui.ready();
 
 const remotes = new Map<string, RemotePlayer>();
@@ -41,6 +66,9 @@ let player: LocalPlayer;
 let me = 'me';
 const vehAudio = new Map<number, VehicleAudio>();
 let ambience: Ambience | null = null;
+let touch: TouchControls | null = null;
+const TOUCH = isTouch();
+if (TOUCH) document.body.classList.add('touch');
 audio.terrain = world.terrain;
 const hornFor = (c: Car): [number, number] => (c.spec.model === 'fortuner' ? [340, 428] : [415, 520]);
 
@@ -97,7 +125,17 @@ ui.onJoin(async (name) => {
   voice = new Voice(); // inside the click: unlocks audio
   audio.sys = new SoundSystem(voice.ctx, voice.master);
   ambience = new Ambience(audio.sys, world.terrain);
-  if (!SOLO) {
+  SOLO = mode === 'single';
+  try {
+    localStorage.setItem('vw-mode', mode);
+  } catch {
+    /* no storage */
+  }
+  if (SOLO) {
+    // NPCs only in single player.
+    traffic = new Traffic(world);
+    pedestrians = new Pedestrians(world);
+  } else {
     net = new Net({
       onPlayerJoined: addRemote,
       onPlayerLeft: removeRemote,
@@ -132,7 +170,7 @@ ui.onJoin(async (name) => {
       onDisconnected: () => ui.setStatus('Disconnected — reload to rejoin'),
     });
     try {
-      me = (await net.connect(name)).identity;
+      me = (await net.connect(name, room)).identity;
     } catch (e) {
       void voice.ctx.close();
       voice = null;
@@ -143,8 +181,13 @@ ui.onJoin(async (name) => {
   }
   player = new LocalPlayer(world, canvas, name);
   player.onCamMode = (m) => ui.toast(`Camera: ${CAM_LABEL[m]}`);
+  if (TOUCH) {
+    touch = new TouchControls(player);
+    void document.documentElement.requestFullscreen?.().catch(() => {});
+  }
   ui.showHud();
-  ui.setStatus(SOLO ? 'Solo mode (no voice chat)' : `Connected as ${name}`);
+  ui.setStatus(SOLO ? `${name} · Single player` : `${name} · ${room === LOBBY ? 'Public lobby' : `Room ${room}`}`);
+  ui.setInviteVisible(!SOLO);
   ui.setMic(net?.micAvailable ? 'on' : 'unavailable');
   requestAnimationFrame(frame);
   if (import.meta.env.DEV) Object.assign(window, { __vw: { world, player, remotes, voice, net, cars, registry } });
@@ -217,6 +260,8 @@ let lastUi = 0;
 
 function carInput(): CarInput {
   const k = (c: string) => player.isDown(c);
+  const a = player.analog;
+  if (Math.hypot(a.x, a.y) > 0.1) return { throttle: Math.max(0, a.y), brake: Math.max(0, -a.y), steer: -a.x, handbrake: k('Space') };
   return {
     throttle: k('KeyW') || k('ArrowUp') ? 1 : 0,
     brake: k('KeyS') || k('ArrowDown') ? 1 : 0,
@@ -265,6 +310,7 @@ function frame(now: number) {
   }
   if (player.car || player.seat >= 0) announcer?.update(player.pos, false, false, now);
   ui.setHint(hint, live);
+  touch?.setMode(player.car ? (player.car.seat === 0 ? 'drive' : 'ride') : player.seat >= 0 ? 'seated' : 'foot', hint);
   driving = player.car?.seat === 0 ? player.car.car : null; // (may have changed above)
 
   // ── fixed-step physics ──
@@ -282,9 +328,9 @@ function frame(now: number) {
   // ── per-frame updates ──
   player.update(dt);
   const obstacles = [player.avatar.group.position, ...cars.map((c) => c.visual.root.position), ...[...remotes.values()].map((r) => r.avatar.group.position)];
-  traffic.update(dt, obstacles, audio.sys);
+  traffic?.update(dt, obstacles, audio.sys);
   if (driving) driving.state.horn = player.isDown('KeyH');
-  pedestrians.update(dt, world.camera.position);
+  pedestrians?.update(dt, world.camera.position);
   for (const c of cars) c.update(now, dt);
   for (const r of remotes.values()) {
     r.update(now, dt, cars);
@@ -366,7 +412,7 @@ function frame(now: number) {
     ui.drawMap(WORLD_HALF, { x: g.x, z: g.z, yaw: player.car ? Math.atan2(...(() => { const f = new THREE.Vector3(0, 0, 1).applyQuaternion(player.car!.car.quaternion()); return [f.x, f.z] as [number, number]; })()) : player.yaw }, [
       ...[...remotes.values()].map((r) => ({ x: r.avatar.group.position.x, z: r.avatar.group.position.z })),
       ...cars.map((c) => ({ x: c.position().x, z: c.position().z, car: true })),
-      ...traffic.positions().map((p) => ({ x: p.x, z: p.z, car: true })),
+      ...(traffic?.positions() ?? []).map((p) => ({ x: p.x, z: p.z, car: true })),
     ]);
   }
 

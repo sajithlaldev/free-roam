@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
+/** Prefix for LiveKit room names; each invite code gets its own room ("lobby" is public). */
 const ROOM_NAME = process.env.ROOM_NAME || 'voice-world';
 const PORT = Number(process.env.PORT) || 3001;
 
@@ -33,6 +34,8 @@ app.post('/api/token', express.json({ limit: '1kb' }), async (req, res) => {
   if (limited(req.ip ?? 'unknown')) return res.status(429).json({ error: 'Too many requests' });
 
   const name = String(req.body?.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 24);
+  const room = String(req.body?.room ?? '').toLowerCase().trim() || 'lobby';
+  if (!/^[a-z0-9-]{3,32}$/.test(room)) return res.status(400).json({ error: 'Invalid room code' });
   if (!name) return res.status(400).json({ error: 'Name required' });
 
   const identity = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 16)}-${randomBytes(3).toString('hex')}`;
@@ -43,17 +46,17 @@ app.post('/api/token', express.json({ limit: '1kb' }), async (req, res) => {
   });
   at.addGrant({
     roomJoin: true,
-    room: ROOM_NAME,
+    room: `${ROOM_NAME}-${room}`,
     canSubscribe: true,
     canPublish: true,
     canPublishData: true,
     canPublishSources: [TrackSource.MICROPHONE],
   });
-  res.json({ token: await at.toJwt(), url: LIVEKIT_URL, identity });
+  res.json({ token: await at.toJwt(), url: LIVEKIT_URL, identity, room });
 });
 
 // In production, serve the built client from the same origin.
 const dist = path.resolve('dist');
 if (existsSync(dist)) app.use(express.static(dist));
 
-app.listen(PORT, () => console.log(`token server on :${PORT} (room "${ROOM_NAME}")`));
+app.listen(PORT, () => console.log(`token server on :${PORT} (rooms "${ROOM_NAME}-*")`));

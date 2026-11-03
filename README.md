@@ -21,6 +21,14 @@ KSEB poles carry sagging power lines along every road; houses have laterite comp
 
 Roads connect everything (with bridges over the canals) and street lamps, direction signs and a minimap help you find your way. Water deeper than chest height is swimmable.
 
+## Modes, rooms and invites
+
+The join screen offers **Single player** (offline: you, the town's pedestrians and AI traffic) or **Multiplayer** (voice chat with other people; no NPCs). In multiplayer you join the **public lobby**, or press **Create private room** to get an unguessable room code and an invite link (`…/?room=k7mq-x2pd`) to copy or share; anyone opening the link lands in the same room. Each room is its own LiveKit room on the server. The in-game **Invite** button shares the link again.
+
+## Phones and tablets
+
+On touch devices a controls overlay appears: a floating analog stick on the left (push gently to walk, all the way to sprint; when driving it's throttle / brake / steering), drag anywhere on the right to look, and context buttons — Jump, Crouch, Lie, Interact (E: enter / sit / exit, hold at a mic to talk), camera and mic; in a car Brake (handbrake), Horn, 4L, Reset, Exit. Graphics start on Low on phones; landscape is recommended.
+
 ## Run it
 
 You need a LiveKit server for voice (LiveKit Cloud free tier, or `livekit-server --dev` locally).
@@ -31,7 +39,7 @@ npm install
 npm run dev              # Vite on :5173 + token server on :3001
 ```
 
-No LiveKit yet? `http://localhost:5173/?solo` runs everything except voice chat (walk, drive, sit, swim alone).
+No LiveKit yet? Choose **Single player** on the join screen (or open `http://localhost:5173/?solo`).
 
 Production: `npm run build && npm start` (the token server also serves `dist/`).
 

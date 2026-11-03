@@ -335,6 +335,8 @@ export class LocalPlayer {
 
   private keys = new Set<string>();
   private pressed = new Set<string>();
+  /** Touch stick (−1..1); overrides WASD when pushed. */
+  analog = { x: 0, y: 0 };
   private vel = new THREE.Vector2();
   private body: RAPIER.RigidBody;
   private collider: RAPIER.Collider;
@@ -385,6 +387,21 @@ export class LocalPlayer {
     canvas.addEventListener('click', () => {
       if (this.enabled && document.pointerLockElement !== canvas) void canvas.requestPointerLock?.();
     });
+  }
+
+  /** Touch buttons press the same keys the keyboard does. */
+  virtualKey(code: string, down: boolean) {
+    if (down) {
+      if (!this.keys.has(code)) this.pressed.add(code);
+      this.keys.add(code);
+    } else this.keys.delete(code);
+  }
+
+  /** Touch look (pixels dragged). */
+  look(dx: number, dy: number) {
+    this.camYaw -= dx * 0.0025;
+    this.elev = THREE.MathUtils.clamp(this.elev + dy * 0.0025, -0.35, 1.3);
+    this.lastMouse = performance.now();
   }
 
   isDown(code: string) {
@@ -510,8 +527,10 @@ export class LocalPlayer {
       if (!this.setShape(0)) this.setShape(1);
     }
 
-    const ix = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
-    const iz = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
+    const stick = Math.hypot(this.analog.x, this.analog.y);
+    const useStick = stick > 0.12;
+    const ix = useStick ? this.analog.x : (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
+    const iz = useStick ? this.analog.y : (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
     const sy = Math.sin(this.camYaw);
     const cy = Math.cos(this.camYaw);
     let mx = sy * iz - cy * ix;
@@ -521,15 +540,17 @@ export class LocalPlayer {
       mx /= len;
       mz /= len;
     }
-    const wantSprint = (k.has('ShiftLeft') || k.has('ShiftRight')) && len > 0 && this.stance === 0;
+    const wantSprint = (k.has('ShiftLeft') || k.has('ShiftRight') || (useStick && stick > 0.94)) && len > 0 && this.stance === 0;
     this.sprint = wantSprint && !this.swimming;
     const top = this.swimming
       ? wantSprint ? SPEED.swimFast : SPEED.swim
       : this.stance === 2 ? SPEED.prone : this.stance === 1 ? SPEED.crouch : this.sprint ? SPEED.sprint : SPEED.walk;
 
     // Accelerate / decelerate like a person, not instantly.
-    const tx = mx * top;
-    const tz = mz * top;
+    // A half-pushed stick walks slower (full push sprints, above).
+    const throttle = useStick && !this.sprint ? Math.min(1, stick / 0.85) : 1;
+    const tx = mx * top * throttle;
+    const tz = mz * top * throttle;
     const accel = len > 0 ? (this.sprint ? 7 : 10) : 12;
     const a = 1 - Math.exp(-accel * h * 0.5);
     if (this.grounded || this.swimming) this.vel.set(this.vel.x + (tx - this.vel.x) * a, this.vel.y + (tz - this.vel.y) * a);

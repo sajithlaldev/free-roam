@@ -91,11 +91,11 @@ export class Net {
 
   }
 
-  async connect(name: string): Promise<{ identity: string }> {
+  async connect(name: string, roomCode: string): Promise<{ identity: string }> {
     const res = await fetch('/api/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, room: roomCode }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || `Token request failed (${res.status})`);

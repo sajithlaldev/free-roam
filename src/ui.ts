@@ -14,7 +14,6 @@ export class UI {
   private joinBtn = $<HTMLButtonElement>('joinBtn');
   private err = $('joinErr');
   private hud = $('hud');
-  private status = $('status');
   private list = $('playerList');
   private empty = $('empty');
   private mic = $<HTMLButtonElement>('micBtn');
@@ -77,7 +76,54 @@ export class UI {
   }
 
   setStatus(text: string) {
-    this.status.textContent = text;
+    $('statusText').textContent = text;
+  }
+
+  /** Single player / Multiplayer switch on the join screen. */
+  bindMode(o: { get: () => 'single' | 'multi'; set: (m: 'single' | 'multi') => void }) {
+    const refresh = () => {
+      const m = o.get();
+      $('modeSingle').classList.toggle('on', m === 'single');
+      $('modeMulti').classList.toggle('on', m === 'multi');
+      $('roomBox').hidden = m !== 'multi';
+      $('modeHint').textContent = m === 'single' ? 'Explore on your own — with people and traffic around town.' : 'Play and talk with friends (needs the voice server). No NPCs.';
+    };
+    $('modeSingle').addEventListener('click', () => (o.set('single'), refresh()));
+    $('modeMulti').addEventListener('click', () => (o.set('multi'), refresh()));
+    refresh();
+  }
+
+  setInviteVisible(v: boolean) {
+    $('inviteBtn').hidden = !v;
+  }
+
+  /** Room picker on the join screen + the in-game Invite button. */
+  bindRooms(o: { get: () => string; create: () => void; lobby: () => void; share: () => Promise<string> }) {
+    const refresh = () => {
+      const r = o.get();
+      const priv = r !== 'lobby';
+      $('roomName').textContent = priv ? `Private room ${r}` : 'Public lobby';
+      $('shareRoomBtn').hidden = !priv;
+      $('lobbyBtn').hidden = !priv;
+      $('newRoomBtn').textContent = priv ? 'New private room' : 'Create private room';
+      $('roomHint').textContent = priv ? 'Send the invite link to friends — only people with the link can join.' : 'Everyone joining without a link lands here.';
+    };
+    const toast = async () => this.toast(await o.share());
+    $('newRoomBtn').addEventListener('click', () => {
+      o.create();
+      refresh();
+      void toast();
+    });
+    $('lobbyBtn').addEventListener('click', () => {
+      o.lobby();
+      refresh();
+    });
+    $('shareRoomBtn').addEventListener('click', () => void toast());
+    $('inviteBtn').addEventListener('click', (e) => {
+      (e.currentTarget as HTMLElement).blur();
+      void toast();
+    });
+    refresh();
   }
 
   setHint(text: string, live = false) {

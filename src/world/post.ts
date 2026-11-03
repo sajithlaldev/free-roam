@@ -7,6 +7,7 @@ import { CopyShader } from 'three/examples/jsm/shaders/CopyShader.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { isTouch } from '../device';
 
 export type Quality = 'high' | 'medium' | 'low';
 export const QUALITIES: Quality[] = ['high', 'medium', 'low'];
@@ -120,7 +121,8 @@ export class Post {
     } catch {
       /* no storage */
     }
-    this.setQuality(saved && QUALITIES.includes(saved) ? saved : 'high');
+    // Phones start on Low (they can step up with the graphics setting).
+    this.setQuality(saved && QUALITIES.includes(saved) ? saved : isTouch() ? 'low' : 'high');
   }
 
   setQuality(q: Quality) {
