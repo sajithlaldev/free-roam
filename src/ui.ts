@@ -1,23 +1,12 @@
-import type { PAHint } from './announce';
-
 export interface PlayerRow {
   name: string;
   distance: number;
   speaking: boolean;
   audible: boolean;
-  /** currently talking on the PA */
-  onPA: boolean;
+  where: string; // "📣", "🚙", "🪑", "" …
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-
-const HINTS: Record<PAHint, string> = {
-  '': '',
-  hold: 'Hold E to use the PA',
-  unmute: 'Unmute (M) to use the PA',
-  busy: 'Someone else is on the PA',
-  live: '🔴 LIVE on the PA',
-};
 
 export class UI {
   private join = $('join');
@@ -30,7 +19,10 @@ export class UI {
   private empty = $('empty');
   private mic = $<HTMLButtonElement>('micBtn');
   private hint = $('hint');
-  private lockHint = $('lockHint');
+  private help = $('help');
+  private dash = $('dash');
+  private mapCanvas = $<HTMLCanvasElement>('minimap');
+  private mapBg: HTMLCanvasElement | null = null;
 
   constructor() {
     const saved = localStorage.getItem('vw-name');
@@ -73,7 +65,7 @@ export class UI {
   onMicToggle(cb: () => void) {
     this.mic.addEventListener('click', () => {
       cb();
-      this.mic.blur(); // so Space doesn't re-trigger the button
+      this.mic.blur();
     });
   }
 
@@ -81,21 +73,56 @@ export class UI {
     this.mic.classList.toggle('muted', state !== 'on');
     this.mic.classList.toggle('speaking', state === 'on' && speaking);
     this.mic.disabled = state === 'unavailable';
-    this.mic.textContent =
-      state === 'on' ? 'Mic on (M)' : state === 'muted' ? 'Muted (M)' : 'No microphone (listen-only)';
+    this.mic.textContent = state === 'on' ? 'Mic on (M)' : state === 'muted' ? 'Muted (M)' : 'No microphone (listen-only)';
   }
 
   setStatus(text: string) {
     this.status.textContent = text;
   }
 
-  setHint(h: PAHint) {
-    this.hint.textContent = HINTS[h];
-    this.hint.classList.toggle('live', h === 'live');
+  setHint(text: string, live = false) {
+    if (this.hint.textContent !== text) this.hint.textContent = text;
+    this.hint.classList.toggle('live', live);
   }
 
-  setLockHintVisible(v: boolean) {
-    this.lockHint.hidden = !v;
+  setHelpVisible(v: boolean) {
+    this.help.hidden = !v;
+  }
+
+  setDash(d: { kmh: number; gear: string; range: string; rpm: number; esp: boolean } | null) {
+    this.dash.hidden = !d;
+    if (!d) return;
+    this.dash.innerHTML = `<b>${d.kmh}</b><span>km/h</span><i>${d.gear}</i><i>${d.range}</i><i class="rpm"><em style="width:${Math.min(100, d.rpm / 62)}%"></em></i>${d.esp ? '<i class="esp">ESP</i>' : ''}`;
+  }
+
+  setMapBackground(c: HTMLCanvasElement) {
+    this.mapBg = c;
+  }
+
+  /** dots: world xz in [-half, half]. */
+  drawMap(half: number, me: { x: number; z: number; yaw: number }, others: { x: number; z: number; car?: boolean }[]) {
+    const c = this.mapCanvas;
+    const g = c.getContext('2d')!;
+    const S = c.width;
+    if (this.mapBg) g.drawImage(this.mapBg, 0, 0, S, S);
+    const tx = (x: number) => ((x + half) / (2 * half)) * S;
+    for (const o of others) {
+      g.fillStyle = o.car ? '#ffd84a' : '#4ade80';
+      g.fillRect(tx(o.x) - 2, tx(o.z) - 2, o.car ? 5 : 4, o.car ? 5 : 4);
+    }
+    g.save();
+    g.translate(tx(me.x), tx(me.z));
+    g.rotate(-me.yaw + Math.PI);
+    g.fillStyle = '#fff';
+    g.strokeStyle = '#000';
+    g.beginPath();
+    g.moveTo(0, -7);
+    g.lineTo(5, 5);
+    g.lineTo(-5, 5);
+    g.closePath();
+    g.fill();
+    g.stroke();
+    g.restore();
   }
 
   setPlayers(rows: PlayerRow[]) {
@@ -107,7 +134,7 @@ export class UI {
         const dot = document.createElement('span');
         dot.className = 'dot';
         const name = document.createElement('span');
-        name.textContent = (r.onPA ? '📣 ' : '') + r.name;
+        name.textContent = (r.where ? r.where + ' ' : '') + r.name;
         const dist = document.createElement('span');
         dist.className = 'dist';
         dist.textContent = `${r.distance.toFixed(0)} m`;

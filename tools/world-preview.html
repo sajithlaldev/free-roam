@@ -1,0 +1,10 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden}canvas{width:100%;height:100%;display:block}</style></head>
+<body><canvas id="c"></canvas><script type="module">
+import { World } from '/src/world/index.ts';
+import { registry } from '/src/world/registry.ts';
+const t0 = performance.now();
+const w = await World.create(document.getElementById('c'));
+window.__w = w; window.__reg = registry;
+window.__ready = { ms: Math.round(performance.now() - t0), stats: w.stats, rooms: registry.rooms.length, pas: registry.pas.length, speakers: registry.speakers.length, seats: registry.seats.length };
+window.view = (px, py, pz, tx, ty, tz) => { w.camera.position.set(px, py, pz); w.camera.lookAt(tx, ty, tz); w.update(0.016, new w.camera.position.constructor(tx, ty, tz)); w.render(); return w.renderer.info.render; };
+</script></body></html>

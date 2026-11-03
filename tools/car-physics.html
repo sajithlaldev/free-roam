@@ -1,0 +1,98 @@
+<!doctype html><html><body><script type="module">
+import * as THREE from 'three';
+import RAPIER from '@dimforge/rapier3d-compat';
+import { Car, JIMNY } from '/src/car.ts';
+await RAPIER.init();
+function makeWorld(ramp) {
+  const physics = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+  physics.timestep = 1 / 60;
+  physics.createCollider(RAPIER.ColliderDesc.cuboid(2000, 0.5, 2000).setTranslation(0, -0.5, 0).setFriction(0.9));
+  if (ramp) { // 40% grade ramp starting at z=30
+    const a = Math.atan(0.4); const L = 60;
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -a);
+    physics.createCollider(RAPIER.ColliderDesc.cuboid(10, 0.5, L / 2).setTranslation(0, Math.sin(a) * L / 2 - 0.5 * Math.cos(a), 30 + Math.cos(a) * L / 2).setRotation(q).setFriction(0.9));
+  }
+  return physics;
+}
+function run(name, script, opts = {}) {
+  const physics = makeWorld(opts.ramp);
+  const car = new Car(0, physics, new THREE.Scene(), 0, JIMNY.wheelRadius + 0.3, 0, 0, 0xffcc00);
+  car.takeControl();
+  if (opts.low) car.state.low = true;
+  const log = { name };
+  let t = 0; const dt = 1 / 60;
+  for (let i = 0; i < (opts.steps ?? 3600); i++) {
+    const inp = script(t, car, log);
+    if (inp === 'stop') break;
+    car.fixedUpdate(dt, inp);
+    physics.step();
+    t += dt;
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(car.quaternion());
+    if (up.y < 0.3) { log.rolledOver = +t.toFixed(2); break; }
+  }
+  const p = car.position();
+  log.end = { t: +t.toFixed(2), x: +p.x.toFixed(1), y: +p.y.toFixed(2), z: +p.z.toFixed(1), kmh: car.hud().kmh, gear: car.hud().gear };
+  return log;
+}
+const kmh = (car) => car.state.speed * 3.6;
+const res = [];
+for (const ar of [1]) {
+res.push(run('settle', (t, car, log) => { if (t > 3) { log.rideY = +car.position().y.toFixed(3); log.susp = [0,1,2,3].map(i => +car.ctrl.wheelSuspensionLength(i).toFixed(3)); return 'stop'; } return { throttle: 0, brake: 0, steer: 0, handbrake: false }; }));
+res.push(run('accel', (t, car, log) => {
+  const v = kmh(car);
+  if (!log.t60 && v >= 60) log.t60 = +t.toFixed(2);
+  if (!log.t100 && v >= 100) log.t100 = +t.toFixed(2);
+  if (false) { const e = new THREE.Euler().setFromQuaternion(car.quaternion(), 'YXZ'); (log.trace ??= []).push([Math.round(t), Math.round(v), +(e.y*57.3).toFixed(1), +(e.z*57.3).toFixed(1), car.hud().gear]); }
+  if (t > 50) { log.top = Math.round(v); log.rpm = Math.round(car.state.rpm); return 'stop'; }
+  return { throttle: 1, brake: 0, steer: 0, handbrake: false };
+}, { steps: 4000 }));
+res.push(run('brake100', (t, car, log) => {
+  const v = kmh(car);
+  if (!log.from && v >= 100) { log.from = car.position().z; }
+  if (log.from !== undefined) { if (Math.abs(car.state.speed) < 0.2) { log.dist = +(car.position().z - log.from).toFixed(1); return 'stop'; } return { throttle: 0, brake: 1, steer: 0, handbrake: false }; }
+  return { throttle: 1, brake: 0, steer: 0, handbrake: false };
+}, { steps: 4000 }));
+res.push(run('circle40', (t, car, log) => {
+  const v = kmh(car);
+  if (t > 25) { const lv = car.body.linvel(); const av = car.body.angvel(); log.speed = Math.round(v); log.latG = +(Math.hypot(lv.x, lv.z) * Math.abs(av.y) / 9.81).toFixed(2); return 'stop'; }
+  return { throttle: v < 40 ? 0.6 : 0.15, brake: 0, steer: t > 6 ? 1 : 0, handbrake: false };
+}));
+res.push(run('laneChange80', (t, car, log) => {
+  const v = kmh(car);
+  if (!log.at && v >= 80) log.at = t;
+  if (log.at !== undefined) {
+    const s = t - log.at;
+    if (s > 6) { log.ok = true; return 'stop'; }
+    const steer = s < 0.6 ? 1 : s < 1.5 ? -1 : s < 2.1 ? 1 : 0;
+    return { throttle: 0.4, brake: 0, steer, handbrake: false };
+  }
+  return { throttle: 1, brake: 0, steer: 0, handbrake: false };
+}, { steps: 4000 }));
+res.push(run('cruise130_60s', (t, car, log) => {
+  const v = kmh(car);
+  const e = new THREE.Euler().setFromQuaternion(car.quaternion(), 'YXZ');
+  log.maxRoll = Math.max(log.maxRoll ?? 0, Math.abs(e.z * 57.3));
+  if (t > 70) { log.kmh = Math.round(v); log.maxRoll = +log.maxRoll.toFixed(2); log.x = +car.position().x.toFixed(2); return 'stop'; }
+  return { throttle: v < 130 ? 1 : 0.5, brake: 0, steer: 0, handbrake: false };
+}, { steps: 5000 }));
+res.push(run('fullLockThrottle', (t, car, log) => {
+  if (t > 20) { const av = car.body.angvel(); log.kmh = Math.round(kmh(car)); log.yawRate = +av.y.toFixed(2); return 'stop'; }
+  return { throttle: 1, brake: 0, steer: t > 3 ? 1 : 0, handbrake: false };
+}));
+res.push(run('handbrakeTurn', (t, car, log) => {
+  const v = kmh(car);
+  if (!log.at && v > 50) log.at = t;
+  if (log.at) { const s = t - log.at; if (s > 5) { const e = new THREE.Euler().setFromQuaternion(car.quaternion(), 'YXZ'); log.yawDeg = Math.round(e.y * 57.3); log.kmh = Math.round(v); return 'stop'; } return { throttle: 0, brake: 0, steer: s < 1.5 ? 1 : 0, handbrake: s < 1.2 }; }
+  return { throttle: 1, brake: 0, steer: 0, handbrake: false };
+}));
+res.push(run('reverse', (t, car, log) => { if (t > 6) { log.kmh = Math.round(kmh(car)); log.gear = car.state.gear; return 'stop'; } return { throttle: 0, brake: 1, steer: 0, handbrake: false }; }));
+for (const low of [false, true]) res.push(run(low ? 'ramp40_4L' : 'ramp40_4H', (t, car, log) => {
+  const z = car.position().z;
+  if (!log.top && car.position().y > 20) log.top = +t.toFixed(1);
+  if (t > 40) { log.maxY = +car.position().y.toFixed(1); return 'stop'; }
+  return { throttle: 1, brake: 0, steer: 0, handbrake: false };
+}, { ramp: true, low }));
+}
+window.__res = res;
+document.body.innerHTML = '<pre>' + res.map(r => JSON.stringify(r)).join('\n') + '</pre>';
+</script></body></html>

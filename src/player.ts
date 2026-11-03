@@ -1,14 +1,21 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { cloneAvatar, getAvatarTemplate } from './assets';
-import { ProceduralRig } from './procedural';
-import { AVATAR, INTERP_DELAY_MS, SPAWN } from './config';
-import type { World } from './world';
+import { AVATAR, INTERP_DELAY_MS } from './config';
+import type { Car } from './car';
+import { ProceduralRig, type AnimInput, type SitMode, type Stance } from './procedural';
+import { SPAWN, WATER_Y } from './world/layout';
+import { registry } from './world/registry';
+import type { World } from './world/index';
 
-const CAP_HALF = 0.5;
-const CAP_R = 0.35;
-const CENTER_Y = CAP_HALF + CAP_R; // capsule centre height above the feet
-export const EYE_HEIGHT = 1.6;
+// Capsule shapes per stance: [halfHeight, radius]; the capsule's centre sits half+radius above the feet.
+const SHAPES: Record<Stance, [number, number]> = { 0: [0.5, 0.33], 1: [0.22, 0.33], 2: [0.06, 0.3] };
+export const EYE: Record<Stance, number> = { 0: 1.6, 1: 1.1, 2: 0.45 };
+const SPEED = { walk: 1.75, sprint: 6.4, crouch: 1.15, prone: 0.55, swim: 1.1, swimFast: 1.8 };
+const GRAVITY = 9.81;
+const JUMP_V = 3.4; // ≈ 0.6 m jump
+const SWIM_DEPTH = 1.25; // deeper than this (at the player's position) → swimming
+const SWIM_FEET = WATER_Y - 1.32; // feet height while floating
 
 function hueFor(s: string): number {
   let h = 0;
@@ -33,98 +40,80 @@ function makeLabel(text: string): THREE.Sprite {
   tex.colorSpace = THREE.SRGBColorSpace;
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
   s.scale.set(2, 0.5, 1);
-  s.position.y = 2.25;
+  s.position.y = 2.2;
   s.renderOrder = 10;
   return s;
 }
 
-type Gait = 'idle' | 'walk' | 'run';
-
-/** A capsule placeholder, swapped for public/models/avatar.glb (idle/walk/run clips) if present. */
+/** A body: placeholder capsule until public/models/avatar.glb loads; procedural animation. */
 export class Avatar {
-  readonly group = new THREE.Group(); // origin at the feet, +Z is forward
+  readonly group = new THREE.Group(); // character frame: feet at origin, +Z forward
   private body = new THREE.Group();
-  private mixer?: THREE.AnimationMixer;
-  private actions: Partial<Record<Gait, THREE.AnimationAction>> = {};
-  private gait: Gait = 'idle';
-  private current?: THREE.AnimationAction;
-  private disposed = false;
-  private label: THREE.Sprite;
-  private materials: THREE.Material[] = [];
+  private pose = new THREE.Group();
   private rig: ProceduralRig | null = null;
-  private speed = 0;
+  private mixer?: THREE.AnimationMixer;
+  private actions: Partial<Record<'idle' | 'walk' | 'run', THREE.AnimationAction>> = {};
+  private current?: THREE.AnimationAction;
+  private label: THREE.Sprite;
+  private disposed = false;
+  private materials: THREE.Material[] = [];
+  private shadow = true;
 
   constructor(name: string, identityForColour: string) {
     const color = new THREE.Color().setHSL(hueFor(identityForColour), 0.6, 0.55);
-    const capsuleMat = new THREE.MeshStandardMaterial({ color });
-    const capsule = new THREE.Mesh(new THREE.CapsuleGeometry(CAP_R, CAP_HALF * 2, 6, 16), capsuleMat);
-    capsule.position.y = CENTER_Y;
+    const capsule = new THREE.Mesh(new THREE.CapsuleGeometry(0.33, 1.0, 6, 16), new THREE.MeshStandardMaterial({ color }));
+    capsule.position.y = 0.83;
     capsule.castShadow = true;
-    const nose = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, 0.12, 0.2),
-      new THREE.MeshStandardMaterial({ color: 0xffffff }),
-    );
-    nose.position.set(0, EYE_HEIGHT - 0.1, CAP_R);
-    this.body.add(capsule, nose);
+    this.pose.add(capsule);
+    this.body.add(this.pose);
     this.group.add(this.body);
-
     this.label = makeLabel(name);
     this.group.add(this.label);
 
     void getAvatarTemplate().then((t) => {
       if (!t || this.disposed) return;
-      this.body.clear();
+      this.pose.clear();
       const model = cloneAvatar(t, color);
       model.traverse((o) => {
         const m = (o as THREE.Mesh).material;
         if (m && !Array.isArray(m) && m.name === AVATAR.tintMaterial) this.materials.push(m);
+        if ((o as THREE.Mesh).isMesh) o.castShadow = this.shadow;
       });
-      this.body.add(model);
-      if (!this.shadow) model.traverse((o) => ((o as THREE.Mesh).isMesh ? (o.castShadow = false) : undefined));
-      this.mixer = new THREE.AnimationMixer(model);
-      for (const g of ['idle', 'walk', 'run'] as Gait[]) {
-        const clip = t[g];
-        if (clip) this.actions[g] = this.mixer.clipAction(clip);
+      this.pose.add(model);
+      if (t.idle && t.walk) {
+        this.mixer = new THREE.AnimationMixer(model);
+        for (const g of ['idle', 'walk', 'run'] as const) if (t[g]) this.actions[g] = this.mixer.clipAction(t[g]!);
+      } else {
+        this.rig = ProceduralRig.create(model, this.pose, this.group);
       }
-      this.play(this.gait, 0);
-      // No usable clips? Animate humanoid rigs procedurally.
-      if (!this.actions.idle && !this.actions.walk) this.rig = ProceduralRig.create(model);
     });
   }
 
-  private shadow = true;
-
-  /** Shadows cost a second pass over ~60k triangles per character; main.ts keeps them for nearby players only. */
   setShadow(on: boolean) {
     if (on === this.shadow) return;
     this.shadow = on;
-    this.body.traverse((o) => {
-      if ((o as THREE.Mesh).isMesh) o.castShadow = on;
-    });
+    this.body.traverse((o) => (o as THREE.Mesh).isMesh && (o.castShadow = on));
   }
 
-  /** Pick idle / walk / run from horizontal speed (m/s). */
-  setSpeed(speed: number) {
-    this.speed = speed;
-    const g: Gait = speed > AVATAR.runAbove ? 'run' : speed > AVATAR.walkAbove ? 'walk' : 'idle';
-    if (g !== this.gait) {
-      this.gait = g;
-      this.play(g, 0.2);
+  setLabelVisible(v: boolean) {
+    this.label.visible = v;
+  }
+
+  animate(dt: number, inp: AnimInput) {
+    if (this.rig) {
+      this.rig.update(dt, inp);
+      return;
     }
-  }
-
-  private play(g: Gait, fade: number) {
-    // Fall back to walk if there's no run clip, and to idle if there's no walk clip.
-    const next = this.actions[g] ?? (g === 'run' ? this.actions.walk : undefined) ?? this.actions.idle;
-    if (!next || next === this.current) return;
-    next.reset().setEffectiveWeight(1).fadeIn(fade).play();
-    this.current?.fadeOut(fade);
-    this.current = next;
-  }
-
-  update(dt: number) {
-    this.mixer?.update(dt);
-    this.rig?.update(dt, this.speed);
+    if (this.mixer) {
+      const g = inp.speed > AVATAR.runAbove ? 'run' : inp.speed > AVATAR.walkAbove ? 'walk' : 'idle';
+      const next = this.actions[g] ?? this.actions.walk ?? this.actions.idle;
+      if (next && next !== this.current) {
+        next.reset().fadeIn(0.2).play();
+        this.current?.fadeOut(0.2);
+        this.current = next;
+      }
+      this.mixer.update(dt);
+    }
   }
 
   dispose() {
@@ -138,6 +127,24 @@ export class Avatar {
   }
 }
 
+// ── network state shared by local & remote players ──────────────────────────
+
+export interface NetState {
+  grounded: boolean;
+  stance: Stance;
+  swim: boolean;
+  sprint: boolean;
+  /** Chair seat id (registry.seats) or −1. */
+  seat: number;
+  /** car id × 4 + seat index, or −1. */
+  carSeat: number;
+}
+
+export const packFlags = (s: NetState) => (s.grounded ? 1 : 0) | (s.stance << 1) | (s.swim ? 8 : 0) | (s.sprint ? 16 : 0);
+export const unpackFlags = (f: number) => ({ grounded: !!(f & 1), stance: ((f >> 1) & 3) as Stance, swim: !!(f & 8), sprint: !!(f & 16) });
+
+// ── remote players ────────────────────────────────────────────────────────────
+
 interface Snap {
   t: number;
   x: number;
@@ -146,86 +153,151 @@ interface Snap {
   yaw: number;
 }
 
-/** Another player: buffers network snapshots and renders ~100 ms in the past, interpolated. */
 export class RemotePlayer {
   readonly avatar: Avatar;
   readonly pos = new THREE.Vector3();
   yaw = 0;
+  state: NetState = { grounded: true, stance: 0, swim: false, sprint: false, seat: -1, carSeat: -1 };
   private buf: Snap[] = [];
   private lastSeq = -1;
   private speed = 0;
+  private vy = 0;
+  private yawRate = 0;
+  private body: RAPIER.RigidBody;
+  private collider: RAPIER.Collider;
 
   constructor(
     readonly identity: string,
     readonly name: string,
+    private world: World,
   ) {
     this.avatar = new Avatar(name, identity);
-    this.avatar.group.visible = false; // until the first position arrives
+    this.avatar.group.visible = false;
+    // Kinematic capsule so cars and the local player bump into remote players.
+    this.body = world.physics.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -100, 0));
+    this.collider = world.physics.createCollider(RAPIER.ColliderDesc.capsule(0.5, 0.33), this.body);
   }
 
-  push(seq: number, x: number, y: number, z: number, yaw: number, now: number) {
-    // The lossy channel is unordered; drop stale packets (with wraparound tolerance).
+  push(seq: number, x: number, y: number, z: number, yaw: number, state: NetState, now: number) {
     if (this.lastSeq >= 0 && ((seq - this.lastSeq) | 0) <= 0) return;
     this.lastSeq = seq;
+    this.state = state;
     this.buf.push({ t: now, x, y, z, yaw });
     if (this.buf.length > 20) this.buf.shift();
   }
 
-  update(now: number, dt: number) {
+  update(now: number, dt: number, cars: Car[]) {
     if (!this.buf.length) return;
     const rt = now - INTERP_DELAY_MS;
-    // a = newest snapshot at or before the render time, b = the one after it.
     let ai = this.buf.length - 1;
     while (ai > 0 && this.buf[ai].t > rt) ai--;
     const a = this.buf[ai];
     const b = this.buf[Math.min(ai + 1, this.buf.length - 1)];
     const k = b.t > a.t ? THREE.MathUtils.clamp((rt - a.t) / (b.t - a.t), 0, 1) : 0;
-    if (ai > 0) this.buf.splice(0, ai); // drop what we've passed
+    if (ai > 0) this.buf.splice(0, ai);
 
     const px = this.pos.x;
+    const py = this.pos.y;
     const pz = this.pos.z;
+    const pyaw = this.yaw;
     this.pos.set(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k);
     let dy = b.yaw - a.yaw;
     dy = Math.atan2(Math.sin(dy), Math.cos(dy));
     this.yaw = a.yaw + dy * k;
 
-    if (!this.avatar.group.visible) {
-      this.avatar.group.visible = true;
-    } else if (dt > 0) {
-      const v = Math.hypot(this.pos.x - px, this.pos.z - pz) / dt;
-      this.speed += (v - this.speed) * Math.min(1, dt * 10);
-      this.avatar.setSpeed(this.speed);
+    const g = this.avatar.group;
+    const first = !g.visible;
+    g.visible = true;
+    if (!first && dt > 0) {
+      this.speed += (Math.hypot(this.pos.x - px, this.pos.z - pz) / dt - this.speed) * Math.min(1, dt * 10);
+      this.vy += ((this.pos.y - py) / dt - this.vy) * Math.min(1, dt * 12);
+      let dyaw = this.yaw - pyaw;
+      dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+      this.yawRate += (dyaw / dt - this.yawRate) * Math.min(1, dt * 10);
     }
-    this.avatar.group.position.copy(this.pos);
-    this.avatar.group.rotation.y = this.yaw;
-    this.avatar.update(dt);
+
+    const s = this.state;
+    let sit: SitMode = 0;
+    let steer = 0;
+    const car = s.carSeat >= 0 ? cars[s.carSeat >> 2] : undefined;
+    if (car) {
+      const seat = s.carSeat & 3;
+      car.seatWorld(seat, g.position);
+      car.quaternion(g.quaternion);
+      sit = seat === 0 ? 2 : 3;
+      steer = car.state.steer;
+      this.speed = 0;
+    } else if (s.seat >= 0 && registry.seats[s.seat]) {
+      const st = registry.seats[s.seat];
+      g.position.set(st.x, st.y, st.z);
+      g.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), st.yaw);
+      sit = 1;
+      this.speed = 0;
+    } else {
+      g.position.copy(this.pos);
+      g.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
+    }
+    const onFoot = sit === 0;
+    this.collider.setEnabled(onFoot);
+    if (onFoot) this.body.setNextKinematicTranslation({ x: this.pos.x, y: this.pos.y + 0.83, z: this.pos.z });
+
+    this.avatar.animate(dt, {
+      speed: sit ? 0 : this.speed,
+      vy: this.vy,
+      grounded: s.grounded,
+      stance: s.stance,
+      sit,
+      swim: s.swim,
+      sprint: s.sprint,
+      yawRate: sit ? 0 : this.yawRate,
+      steer,
+      ground: this.world.terrain.heightAt,
+    });
   }
 
   head(out: THREE.Vector3): THREE.Vector3 {
-    return out.set(this.pos.x, this.pos.y + EYE_HEIGHT, this.pos.z);
+    const g = this.avatar.group.position;
+    const h = this.state.carSeat >= 0 || this.state.seat >= 0 ? 0.8 : this.state.swim ? 1.5 : EYE[this.state.stance];
+    return out.set(g.x, g.y + h, g.z);
   }
 
   dispose() {
     this.avatar.dispose();
+    this.world.physics.removeRigidBody(this.body);
   }
 }
 
-/** WASD + mouse look, Rapier kinematic character controller, third-person camera. */
+// ── the local player ──────────────────────────────────────────────────────────
+
 export class LocalPlayer {
   readonly avatar: Avatar;
   readonly pos = new THREE.Vector3(...SPAWN); // feet
-  yaw = Math.PI; // facing -Z (towards the mic)
+  yaw = Math.PI;
   camYaw = Math.PI;
-  elev = 0.35;
-  enabled = true; // false while typing in UI inputs
+  elev = 0.32;
+  camDist = 3.6;
+  enabled = true;
+
+  stance: Stance = 0;
+  sprint = false;
+  swimming = false;
+  grounded = true;
+  vy = 0;
+  /** Horizontal speed (m/s) and turn rate (rad/s), for animation + network. */
+  speed = 0;
+  yawRate = 0;
+  seat = -1;
+  car: { car: Car; seat: number } | null = null;
 
   private keys = new Set<string>();
-  private vy = 0;
-  private grounded = false;
-  private camDist = 4.5;
+  private pressed = new Set<string>();
+  private vel = new THREE.Vector2();
   private body: RAPIER.RigidBody;
   private collider: RAPIER.Collider;
   private cc: RAPIER.KinematicCharacterController;
+  private camTarget = new THREE.Vector3();
+  private carCamYaw = 0;
+  private lastMouse = 0;
   private tmp = new THREE.Vector3();
 
   constructor(
@@ -234,118 +306,313 @@ export class LocalPlayer {
     name: string,
   ) {
     this.avatar = new Avatar(name, name);
-    this.world.scene.add(this.avatar.group);
-
+    this.avatar.setLabelVisible(false);
+    world.scene.add(this.avatar.group);
     const p = world.physics;
-    this.body = p.createRigidBody(
-      RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(this.pos.x, CENTER_Y + 0.05, this.pos.z),
-    );
-    this.collider = p.createCollider(RAPIER.ColliderDesc.capsule(CAP_HALF, CAP_R), this.body);
+    this.pos.y = world.terrain.heightAt(this.pos.x, this.pos.z) + 0.05;
+    const [hh, r] = SHAPES[0];
+    this.body = p.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(this.pos.x, this.pos.y + hh + r, this.pos.z));
+    this.collider = p.createCollider(RAPIER.ColliderDesc.capsule(hh, r), this.body);
     this.cc = p.createCharacterController(0.02);
     this.cc.setSlideEnabled(true);
-    this.cc.setMaxSlopeClimbAngle((50 * Math.PI) / 180);
-    this.cc.enableAutostep(0.3, 0.15, false);
-    this.cc.enableSnapToGround(0.25);
-    this.cc.setApplyImpulsesToDynamicBodies(false);
+    this.cc.setMaxSlopeClimbAngle((48 * Math.PI) / 180);
+    this.cc.setMinSlopeSlideAngle((55 * Math.PI) / 180);
+    this.cc.enableAutostep(0.34, 0.18, false);
+    this.cc.enableSnapToGround(0.3);
+    this.cc.setApplyImpulsesToDynamicBodies(true);
+    this.cc.setCharacterMass(75);
 
     addEventListener('keydown', (e) => {
-      if (!this.enabled || (e.target instanceof HTMLInputElement)) return;
+      if (!this.enabled || e.target instanceof HTMLInputElement) return;
+      if (!this.keys.has(e.code)) this.pressed.add(e.code);
       this.keys.add(e.code);
       if (e.code === 'Space') e.preventDefault();
     });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => this.keys.clear());
-
     addEventListener('mousemove', (e) => {
       if (document.pointerLockElement !== this.canvas) return;
       this.camYaw -= e.movementX * 0.0025;
-      this.elev = THREE.MathUtils.clamp(this.elev + e.movementY * 0.0025, -0.25, 1.25);
+      this.elev = THREE.MathUtils.clamp(this.elev + e.movementY * 0.0025, -0.35, 1.3);
+      this.lastMouse = performance.now();
     });
+    addEventListener('wheel', (e) => (this.camDist = THREE.MathUtils.clamp(this.camDist + e.deltaY * 0.004, 1.8, 9)), { passive: true });
     canvas.addEventListener('click', () => {
       if (this.enabled && document.pointerLockElement !== canvas) void canvas.requestPointerLock?.();
     });
   }
 
-  isDown(code: string): boolean {
+  isDown(code: string) {
     return this.keys.has(code);
   }
-
-  get isLocked(): boolean {
+  /** True once per key press (consumed). */
+  tapped(code: string) {
+    const had = this.pressed.has(code);
+    this.pressed.delete(code);
+    return had;
+  }
+  get isLocked() {
     return document.pointerLockElement === this.canvas;
+  }
+  get onFoot() {
+    return this.seat < 0 && !this.car;
+  }
+
+  netState(): NetState {
+    return {
+      grounded: this.grounded,
+      stance: this.stance,
+      swim: this.swimming,
+      sprint: this.sprint,
+      seat: this.seat,
+      carSeat: this.car ? this.car.car.id * 4 + this.car.seat : -1,
+    };
   }
 
   head(out: THREE.Vector3): THREE.Vector3 {
-    return out.set(this.pos.x, this.pos.y + EYE_HEIGHT, this.pos.z);
+    const g = this.avatar.group.position;
+    const h = this.onFoot ? (this.swimming ? 1.5 : EYE[this.stance]) : 0.8;
+    return out.set(g.x, g.y + h, g.z);
   }
 
-  /** Horizontal speed this frame, for "is walking" and network keep-alive decisions. */
-  speed = 0;
+  // ── stance ──
 
-  update(dt: number) {
+  private setShape(st: Stance): boolean {
+    const [hh, r] = SHAPES[st];
+    const c = { x: this.pos.x, y: this.pos.y + hh + r + 0.01, z: this.pos.z };
+    if (st < this.stance) {
+      // Getting taller: is there headroom?
+      const hit = this.world.physics.intersectionWithShape(c, { x: 0, y: 0, z: 0, w: 1 }, new RAPIER.Capsule(hh, r), undefined, undefined, this.collider);
+      if (hit) return false;
+    }
+    this.collider.setHalfHeight(hh);
+    this.collider.setRadius(r);
+    this.body.setTranslation(c, true);
+    this.stance = st;
+    return true;
+  }
+
+  // ── seats & cars ──
+
+  sitOn(seatId: number) {
+    const s = registry.seats[seatId];
+    if (!s) return;
+    if (this.stance !== 0) this.setShape(0);
+    this.seat = seatId;
+    this.collider.setEnabled(false);
+    this.vel.set(0, 0);
+  }
+
+  standUp() {
+    if (this.seat >= 0) {
+      const s = registry.seats[this.seat];
+      const fx = Math.sin(s.yaw);
+      const fz = Math.cos(s.yaw);
+      this.placeAt(s.x + fx * 0.6, s.y - 0.4, s.z + fz * 0.6, s.yaw);
+      this.seat = -1;
+    }
+  }
+
+  enterCar(car: Car, seat: number) {
+    if (this.stance !== 0) this.setShape(0);
+    this.car = { car, seat };
+    this.collider.setEnabled(false);
+    this.vel.set(0, 0);
+    const f = new THREE.Vector3(0, 0, 1).applyQuaternion(car.quaternion());
+    this.carCamYaw = Math.atan2(f.x, f.z);
+  }
+
+  /** Step out on the seat's side; fall back to the other side, then the roof. */
+  exitCar(): Car | null {
+    if (!this.car) return null;
+    const { car, seat } = this.car;
+    const q = car.quaternion();
+    const side = JIMNY_SIDE(seat);
+    const tryAt = (sx: number) => {
+      const p = new THREE.Vector3(sx * 1.45, 0.3, seat < 2 ? -0.1 : -0.9).applyQuaternion(q).add(car.position());
+      const g = this.world.terrain.heightAt(p.x, p.z);
+      const y = Math.max(g, p.y - 0.6);
+      const hit = this.world.physics.intersectionWithShape({ x: p.x, y: y + 0.85, z: p.z }, { x: 0, y: 0, z: 0, w: 1 }, new RAPIER.Capsule(0.5, 0.33), undefined, undefined, this.collider);
+      return hit ? null : new THREE.Vector3(p.x, y, p.z);
+    };
+    const spot = tryAt(side) ?? tryAt(-side) ?? car.position().add(new THREE.Vector3(0, 2.2, 0));
+    const f = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+    this.placeAt(spot.x, spot.y, spot.z, Math.atan2(f.x, f.z));
+    this.car = null;
+    return car;
+  }
+
+  private placeAt(x: number, y: number, z: number, yaw: number) {
+    this.pos.set(x, y, z);
+    const [hh, r] = SHAPES[this.stance];
+    this.body.setTranslation({ x, y: y + hh + r + 0.02, z }, true);
+    this.collider.setEnabled(true);
+    this.yaw = yaw;
+    this.vy = 0;
+  }
+
+  // ── simulation ──
+
+  /** Fixed-step movement (on foot only). Call before world.physics.step(). */
+  fixedUpdate(h: number) {
+    if (!this.onFoot) return;
     const k = this.keys;
+
+    if (this.tapped('KeyC')) this.setShape(this.stance === 1 ? 0 : 1);
+    if (this.tapped('KeyZ')) this.setShape(this.stance === 2 ? 0 : 2) || this.setShape(1);
+    if (this.stance === 2 && this.pressed.has('Space')) {
+      this.pressed.delete('Space');
+      if (!this.setShape(0)) this.setShape(1);
+    }
+
     const ix = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
     const iz = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
-
-    // Camera-relative movement. forward = (sin, 0, cos); screen-right = (-cos, 0, sin).
     const sy = Math.sin(this.camYaw);
     const cy = Math.cos(this.camYaw);
     let mx = sy * iz - cy * ix;
     let mz = cy * iz + sy * ix;
     const len = Math.hypot(mx, mz);
-    const target = k.has('ShiftLeft') || k.has('ShiftRight') ? 7 : 4;
     if (len > 0) {
-      mx = (mx / len) * target;
-      mz = (mz / len) * target;
+      mx /= len;
+      mz /= len;
+    }
+    const wantSprint = (k.has('ShiftLeft') || k.has('ShiftRight')) && len > 0 && this.stance === 0;
+    this.sprint = wantSprint && !this.swimming;
+    const top = this.swimming
+      ? wantSprint ? SPEED.swimFast : SPEED.swim
+      : this.stance === 2 ? SPEED.prone : this.stance === 1 ? SPEED.crouch : this.sprint ? SPEED.sprint : SPEED.walk;
+
+    // Accelerate / decelerate like a person, not instantly.
+    const tx = mx * top;
+    const tz = mz * top;
+    const accel = len > 0 ? (this.sprint ? 7 : 10) : 12;
+    const a = 1 - Math.exp(-accel * h * 0.5);
+    if (this.grounded || this.swimming) this.vel.set(this.vel.x + (tx - this.vel.x) * a, this.vel.y + (tz - this.vel.y) * a);
+
+    // Turn toward the movement direction at a human rate.
+    const prevYaw = this.yaw;
+    if (len > 0) {
       const want = Math.atan2(mx, mz);
       let d = want - this.yaw;
       d = Math.atan2(Math.sin(d), Math.cos(d));
-      this.yaw += d * Math.min(1, dt * 14);
-    } else {
-      mx = mz = 0;
+      const rate = this.stance === 2 ? 2.2 : this.sprint ? 7 : 9;
+      this.yaw += THREE.MathUtils.clamp(d, -rate * h, rate * h);
     }
+    let dyaw = this.yaw - prevYaw;
+    dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+    this.yawRate += (dyaw / h - this.yawRate) * Math.min(1, h * 12);
 
-    if (this.grounded && k.has('Space')) this.vy = 6;
-    else if (this.grounded && this.vy < 0) this.vy = -1;
-    this.vy -= 18 * dt;
+    // Water: float when it's deeper than chest height.
+    const depth = this.world.terrain.waterDepth(this.pos.x, this.pos.z);
+    const wasSwimming = this.swimming;
+    this.swimming = depth > SWIM_DEPTH || (wasSwimming && depth > SWIM_DEPTH - 0.2);
+    if (this.swimming && this.stance !== 0) this.setShape(0);
 
-    this.cc.computeColliderMovement(this.collider, { x: mx * dt, y: this.vy * dt, z: mz * dt });
+    if (this.swimming) {
+      this.vy += ((SWIM_FEET - this.pos.y) * 4 - this.vy) * Math.min(1, h * 5);
+    } else {
+      if (this.grounded && this.pressed.has('Space')) {
+        this.pressed.delete('Space');
+        if (this.stance === 1) this.setShape(0);
+        else if (this.stance === 0) {
+          this.vy = JUMP_V + Math.min(0.6, this.speed * 0.08);
+          this.grounded = false;
+        }
+      }
+      if (this.grounded && this.vy < 0) this.vy = -0.5;
+      this.vy -= GRAVITY * h;
+    }
+    this.pressed.delete('Space');
+
+    this.cc.computeColliderMovement(this.collider, { x: this.vel.x * h, y: this.vy * h, z: this.vel.y * h });
     const m = this.cc.computedMovement();
+    const wasGrounded = this.grounded;
     this.grounded = this.cc.computedGrounded();
+    if (this.grounded && !wasGrounded && this.vy < 0) this.vy = 0;
+    if (!this.grounded && m.y > this.vy * h + 1e-4 && this.vy > 0) this.vy = 0; // bumped a ceiling
     const t = this.body.translation();
     this.body.setNextKinematicTranslation({ x: t.x + m.x, y: t.y + m.y, z: t.z + m.z });
-    this.world.physics.timestep = Math.max(dt, 1e-3);
-    this.world.physics.step();
-    const nt = this.body.translation();
-    this.speed = Math.hypot(nt.x - this.pos.x, nt.z - this.pos.z) / Math.max(dt, 1e-3);
-    this.pos.set(nt.x, nt.y - CENTER_Y, nt.z);
-    if (this.grounded && this.vy < 0) this.vy = 0;
-
-    this.avatar.group.position.copy(this.pos);
-    this.avatar.group.rotation.y = this.yaw;
-    this.avatar.setSpeed(len > 0 ? this.speed : 0);
-    this.avatar.update(dt);
-
-    this.updateCamera();
+    const [hh, r] = SHAPES[this.stance];
+    this.speed = Math.hypot(m.x, m.z) / h;
+    this.pos.set(t.x + m.x, t.y + m.y - hh - r, t.z + m.z);
   }
 
-  private updateCamera() {
-    const head = this.head(this.tmp);
-    const ce = Math.cos(this.elev);
-    const dir = new THREE.Vector3(-Math.sin(this.camYaw) * ce, Math.sin(this.elev), -Math.cos(this.camYaw) * ce);
-    // Pull the camera in if geometry is in the way.
-    const hit = this.world.physics.castRay(
-      new RAPIER.Ray(head, dir),
-      this.camDist,
-      true,
-      undefined,
-      undefined,
-      undefined,
-      this.body,
-    );
-    const dist = hit ? Math.max(0.6, hit.timeOfImpact - 0.25) : this.camDist;
+  /** Per-frame: avatar placement, animation, camera. */
+  update(dt: number) {
+    const g = this.avatar.group;
+    let sit: SitMode = 0;
+    let steer = 0;
+    if (this.car) {
+      const { car, seat } = this.car;
+      car.seatWorld(seat, g.position);
+      car.quaternion(g.quaternion);
+      sit = seat === 0 ? 2 : 3;
+      steer = car.state.steer;
+    } else if (this.seat >= 0) {
+      const s = registry.seats[this.seat];
+      g.position.set(s.x, s.y, s.z);
+      g.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), s.yaw);
+      sit = 1;
+    } else {
+      g.position.copy(this.pos);
+      g.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
+    }
+    this.avatar.animate(dt, {
+      speed: sit ? 0 : this.speed,
+      vy: this.vy,
+      grounded: this.grounded,
+      stance: this.stance,
+      sit,
+      swim: this.swimming && this.onFoot,
+      sprint: this.sprint,
+      yawRate: sit ? 0 : this.yawRate,
+      steer,
+      ground: this.world.terrain.heightAt,
+    });
+    this.updateCamera(dt);
+  }
+
+  private updateCamera(dt: number) {
     const cam = this.world.camera;
-    cam.position.copy(head).addScaledVector(dir, dist);
-    cam.position.y = Math.max(cam.position.y, 0.2);
-    cam.lookAt(head);
+    let pivot: THREE.Vector3;
+    let dist = this.camDist;
+    let yaw = this.camYaw;
+    let elev = this.elev;
+    let exclude: RAPIER.RigidBody | undefined = this.body;
+    if (this.car && this.car.seat === 0) {
+      // Chase camera: sits behind the car, mouse orbits, recentres after a moment.
+      const car = this.car.car;
+      const f = new THREE.Vector3(0, 0, 1).applyQuaternion(car.quaternion());
+      const carYaw = Math.atan2(f.x, f.z);
+      this.carCamYaw = approachAngle(this.carCamYaw, carYaw, dt * 3);
+      if (performance.now() - this.lastMouse > 1800) this.camYaw = approachAngle(this.camYaw, this.carCamYaw, dt * 2.5);
+      yaw = this.camYaw;
+      pivot = car.position(this.tmp).add(new THREE.Vector3(0, 1.4, 0));
+      dist = Math.max(5.5, this.camDist + 2);
+      elev = Math.max(0.12, Math.min(this.elev, 0.6));
+      exclude = car.body;
+    } else {
+      pivot = this.head(this.tmp);
+      if (this.car) exclude = this.car.car.body;
+      if (this.onFoot) dist = this.camDist * (this.stance === 2 ? 0.75 : this.stance === 1 ? 0.85 : 1);
+    }
+    this.camTarget.lerp(pivot, this.car ? 1 : Math.min(1, dt * 18));
+    const ce = Math.cos(elev);
+    const dir = new THREE.Vector3(-Math.sin(yaw) * ce, Math.sin(elev), -Math.cos(yaw) * ce);
+    const hit = this.world.physics.castRay(new RAPIER.Ray(this.camTarget, dir), dist, true, undefined, undefined, undefined, exclude);
+    const d = hit ? Math.max(0.5, hit.timeOfImpact - 0.25) : dist;
+    cam.position.copy(this.camTarget).addScaledVector(dir, d);
+    const gy = this.world.terrain.heightAt(cam.position.x, cam.position.z) + 0.3;
+    if (cam.position.y < gy) cam.position.y = gy;
+    if (cam.position.y < WATER_Y + 0.15 && this.world.terrain.waterDepth(cam.position.x, cam.position.z) > 0) cam.position.y = WATER_Y + 0.15;
+    cam.lookAt(this.camTarget);
   }
+}
+
+const JIMNY_SIDE = (seat: number) => (seat % 2 === 0 ? -1 : 1); // driver side is −X (right-hand drive)
+
+function approachAngle(cur: number, target: number, k: number) {
+  let d = target - cur;
+  d = Math.atan2(Math.sin(d), Math.cos(d));
+  return cur + d * Math.min(1, k);
 }

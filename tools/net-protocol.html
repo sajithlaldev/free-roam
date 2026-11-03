@@ -1,0 +1,18 @@
+<!doctype html><html><body><script type="module">
+import * as THREE from 'three';
+import { RoomEvent } from 'livekit-client';
+import { Net } from '/src/net.ts';
+const got = [];
+const h = new Proxy({}, { get: (_t, k) => (...a) => got.push([k, ...a.map(x => x && x.isVector3 ? ['v3', +x.x.toFixed(3), +x.y.toFixed(3), +x.z.toFixed(3)] : x && x.isQuaternion ? ['q', +x.x.toFixed(3), +x.y.toFixed(3), +x.z.toFixed(3), +x.w.toFixed(3)] : typeof x === 'number' ? +x.toFixed(3) : x)]) });
+const net = new Net(h);
+Object.defineProperty(net, 'connected', { get: () => true });
+net.room.localParticipant.publishData = async (data, opts) => { net.room.emit(RoomEvent.DataReceived, data, { identity: 'bob', name: 'Bob' }, undefined, opts.topic); };
+net.sendPosition(12.5, 3.25, -40.75, 1.5, { grounded: true, stance: 2, swim: false, sprint: true, seat: 37, carSeat: -1 });
+net.sendPosition(1, 2, 3, -2, { grounded: false, stance: 1, swim: true, sprint: false, seat: -1, carSeat: 4 * 3 + 2 });
+net.sendCarPose(3, new THREE.Vector3(10, 1.5, -20), new THREE.Quaternion().setFromEuler(new THREE.Euler(0.1, 2, -0.05)), { steer: -0.3, speed: 22.5, rpm: 4100, gear: 3, throttle: 1, braking: true, low: true }, false);
+net.sendPA(1, true);
+net.sendCarSeat(2, 0, true);
+await new Promise(r => setTimeout(r, 50));
+window.__res = got;
+document.body.innerHTML = '<pre>' + got.map(r => JSON.stringify(r)).join('\n') + '</pre>';
+</script></body></html>

@@ -25,7 +25,7 @@
       .small { font-size: 12px; color: var(--muted); }
 
       .panel { position: fixed; background: var(--bg); border: 1px solid #28313c; border-radius: 12px; padding: 10px 12px; backdrop-filter: blur(6px); }
-      #players { top: 12px; right: 12px; width: 230px; max-height: 60vh; overflow: auto; }
+      #players { top: 12px; right: 12px; width: 230px; max-height: calc(100vh - 230px); overflow: auto; }
       #players h3 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
       #playerList { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
       #playerList li { display: grid; grid-template-columns: 10px 1fr auto; gap: 8px; align-items: center; }
@@ -36,13 +36,20 @@
       #empty { color: var(--muted); }
 
       #status { top: 12px; left: 12px; }
+      #minimap { position: fixed; right: 12px; bottom: 12px; width: 180px; height: 180px; border-radius: 12px; border: 1px solid #28313c; image-rendering: pixelated; }
+      #dash { left: 50%; bottom: 74px; transform: translateX(-50%); display: flex; gap: 10px; align-items: baseline; font-variant-numeric: tabular-nums; }
+      #dash b { font-size: 28px; }
+      #dash i { font-style: normal; padding: 2px 6px; border-radius: 6px; background: #232b35; }
+      #dash i.esp { background: #b8860b; color: #000; }
+      #dash .rpm { width: 90px; height: 8px; padding: 0; position: relative; overflow: hidden; align-self: center; }
+      #dash .rpm em { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #4da3ff, #ff5c5c); }
       #bottom { left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; }
       #micBtn.muted { background: #5b2630; color: #ffd9de; }
       #micBtn.speaking { box-shadow: 0 0 0 3px #4ade8088; }
       #hint { min-width: 12ch; }
       #hint.live { color: var(--live); font-weight: 700; }
-      #lockHint { left: 12px; bottom: 16px; color: var(--muted); max-width: 300px; }
-      @media (max-width: 700px) { #lockHint { display: none; } #players { width: 170px; } }
+      #help { left: 12px; bottom: 16px; color: var(--muted); max-width: 320px; }
+      @media (max-width: 700px) { #help, #minimap { display: none; } #players { width: 170px; } }
     </style>
   </head>
   <body>
@@ -51,7 +58,7 @@
     <div id="join">
       <form class="card" id="joinForm">
         <h1>Voice World</h1>
-        <p>Walk around and talk. People near you sound louder and come from their direction. Anyone can step into the yellow ring at the mic and hold E to talk through the speakers around the world.</p>
+        <p>A slice of Kerala — Kovalam beach, Fort Kochi's fishing nets, the Alappuzha backwaters, Munnar's tea hills and a temple town. Walk, drive a Jimny, sit in on a meeting at the community hall, and talk: voices are spatial and walls muffle them.</p>
         <label>Your name <input id="name" maxlength="24" autocomplete="nickname" required /></label>
         <button id="joinBtn" type="submit" disabled>Loading world…</button>
         <div id="joinErr" role="alert"></div>
@@ -71,7 +78,9 @@
         <button id="micBtn" type="button">Mic on (M)</button>
         <span id="hint"></span>
       </div>
-      <div class="panel" id="lockHint">Click the world to look around · WASD move · Shift run · Space jump · M mute · hold E at the mic to announce</div>
+      <div class="panel" id="dash" hidden></div>
+      <canvas id="minimap" width="180" height="180"></canvas>
+      <div class="panel" id="help">Click to look · WASD move · Shift sprint · Space jump · C crouch · Z lie down · E interact (sit · drive · hold at a mic) · M mute · scroll to zoom</div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>
