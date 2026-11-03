@@ -8,18 +8,16 @@ import {
 import { TOPIC_PA, TOPIC_POS } from './config';
 
 export interface NetHandlers {
-  onPlayerJoined(identity: string, name: string, role: string): void;
+  onPlayerJoined(identity: string, name: string): void;
   onPlayerLeft(identity: string): void;
   onPosition(identity: string, seq: number, x: number, y: number, z: number, yaw: number): void;
   onAudio(identity: string, track: MediaStreamTrack | null): void;
-  /** `role` comes from the sender's server-signed attributes, never from the message. */
-  onPA(identity: string, role: string, on: boolean): void;
+  onPA(identity: string, on: boolean): void;
   onDisconnected(): void;
 }
 
 export interface JoinInfo {
   identity: string;
-  role: string;
 }
 
 export class Net {
@@ -36,18 +34,18 @@ export class Net {
 
   constructor(private h: NetHandlers) {}
 
-  async connect(name: string, code: string): Promise<JoinInfo> {
+  async connect(name: string): Promise<JoinInfo> {
     const res = await fetch('/api/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, code: code || undefined }),
+      body: JSON.stringify({ name }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || `Token request failed (${res.status})`);
 
     const room = this.room;
     const announce = (p: RemoteParticipant) =>
-      this.h.onPlayerJoined(p.identity, p.name || p.identity, p.attributes?.role ?? 'player');
+      this.h.onPlayerJoined(p.identity, p.name || p.identity);
 
     room
       .on(RoomEvent.ParticipantConnected, announce)
@@ -64,7 +62,7 @@ export class Net {
         if (topic === TOPIC_POS && payload.byteLength >= 20) {
           this.h.onPosition(p.identity, v.getUint32(0, true), v.getFloat32(4, true), v.getFloat32(8, true), v.getFloat32(12, true), v.getFloat32(16, true));
         } else if (topic === TOPIC_PA && payload.byteLength >= 1) {
-          this.h.onPA(p.identity, p.attributes?.role ?? 'player', v.getUint8(0) === 1);
+          this.h.onPA(p.identity, v.getUint8(0) === 1);
         }
       })
       .on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
@@ -81,7 +79,7 @@ export class Net {
     } catch (e) {
       console.warn('Microphone unavailable; joining listen-only', e);
     }
-    return { identity: body.identity, role: body.role };
+    return { identity: body.identity };
   }
 
   get connected(): boolean {

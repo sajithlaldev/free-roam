@@ -20,11 +20,10 @@ let net: Net | null = null;
 let voice: Voice | null = null;
 let announcer: Announcer | null = null;
 let player: LocalPlayer;
-let myRole = 'player';
 
-function addRemote(identity: string, name: string, role: string) {
+function addRemote(identity: string, name: string) {
   if (remotes.has(identity)) return;
-  const r = new RemotePlayer(identity, name, role);
+  const r = new RemotePlayer(identity, name);
   remotes.set(identity, r);
   world.scene.add(r.avatar.group);
 }
@@ -36,7 +35,7 @@ function removeRemote(identity: string) {
   announcer?.onLeft(identity);
 }
 
-ui.onJoin(async (name, code) => {
+ui.onJoin(async (name) => {
   // Audio + mic need a user gesture; this submit handler is it.
   voice = new Voice();
 
@@ -46,24 +45,23 @@ ui.onJoin(async (name, code) => {
       onPlayerLeft: removeRemote,
       onPosition: (id, seq, x, y, z, yaw) => remotes.get(id)?.push(seq, x, y, z, yaw, performance.now()),
       onAudio: (id, track) => (track ? voice!.attach(id, track) : voice!.detach(id)),
-      onPA: (id, role, on) => announcer?.onRemote(id, role, on, performance.now()),
+      onPA: (id, on) => announcer?.onRemote(id, on, performance.now()),
       onDisconnected: () => ui.setStatus('Disconnected — reload to rejoin'),
     });
     try {
-      const info = await net.connect(name, code);
-      myRole = info.role;
+      await net.connect(name);
     } catch (e) {
       voice.ctx.close();
       voice = null;
       net = null;
       throw e;
     }
-    announcer = new Announcer(net, voice, world, myRole === 'announcer');
+    announcer = new Announcer(net, voice, world);
   }
 
   player = new LocalPlayer(world, canvas, name);
   ui.showHud();
-  ui.setStatus(SOLO ? 'Solo mode (no voice)' : `Connected as ${name}${myRole === 'announcer' ? ' · announcer' : ''}`);
+  ui.setStatus(SOLO ? 'Solo mode (no voice)' : `Connected as ${name}`);
   ui.setMic(net?.micAvailable ? 'on' : 'unavailable');
   requestAnimationFrame(frame);
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__vw = { world, player, remotes, voice, net };
@@ -138,7 +136,7 @@ function frame(now: number) {
         distance: d,
         speaking: net?.isSpeaking(r.identity) ?? false,
         audible: gainAt(d) > 0,
-        announcer: r.role === 'announcer',
+        onPA: announcer?.isLive(r.identity) ?? false,
       });
     }
     rows.sort((a, b) => a.distance - b.distance);

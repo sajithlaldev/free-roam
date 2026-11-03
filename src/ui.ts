@@ -5,14 +5,14 @@ export interface PlayerRow {
   distance: number;
   speaking: boolean;
   audible: boolean;
-  announcer: boolean;
+  /** currently talking on the PA */
+  onPA: boolean;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const HINTS: Record<PAHint, string> = {
   '': '',
-  approach: '',
   hold: 'Hold E to use the PA',
   unmute: 'Unmute (M) to use the PA',
   busy: 'Someone else is on the PA',
@@ -42,18 +42,17 @@ export class UI {
     this.joinBtn.textContent = 'Join';
   }
 
-  onJoin(cb: (name: string, code: string) => Promise<void>) {
+  onJoin(cb: (name: string) => Promise<void>) {
     this.form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const name = $<HTMLInputElement>('name').value.trim();
-      const code = $<HTMLInputElement>('code').value.trim();
       if (!name) return;
       localStorage.setItem('vw-name', name);
       this.joinBtn.disabled = true;
       this.joinBtn.textContent = 'Joining…';
       this.err.textContent = '';
       try {
-        await cb(name, code);
+        await cb(name);
       } catch (ex) {
         this.err.textContent = ex instanceof Error ? ex.message : String(ex);
         this.joinBtn.disabled = false;
@@ -104,7 +103,7 @@ export class UI {
         const dot = document.createElement('span');
         dot.className = 'dot';
         const name = document.createElement('span');
-        name.textContent = (r.announcer ? '📣 ' : '') + r.name;
+        name.textContent = (r.onPA ? '📣 ' : '') + r.name;
         const dist = document.createElement('span');
         dist.className = 'dist';
         dist.textContent = `${r.distance.toFixed(0)} m`;

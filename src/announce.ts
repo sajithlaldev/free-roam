@@ -4,12 +4,12 @@ import type { Net } from './net';
 import type { Voice } from './voice';
 import type { World } from './world';
 
-export type PAHint = '' | 'approach' | 'hold' | 'unmute' | 'busy' | 'live';
+export type PAHint = '' | 'hold' | 'unmute' | 'busy' | 'live';
 
 /**
- * PA mic. Only players whose server-signed token says role=announcer are honoured.
- * An announcer standing at the mic and holding the key is "live": every other client
- * routes their voice through the speaker props and mutes their body voice.
+ * PA mic. Anyone standing at the mic and holding the key goes "live": every other client
+ * routes their voice through the speaker props scattered around the world and mutes their
+ * body voice so it isn't doubled. One person at a time (best-effort, client-side).
  *
  * "On" is re-sent every PA_HEARTBEAT_MS so late joiners catch up, and a PA that goes
  * quiet for PA_TIMEOUT_MS (crash, tab closed) is switched off automatically.
@@ -23,12 +23,9 @@ export class Announcer {
     private net: Net,
     private voice: Voice,
     private world: World,
-    private isAnnouncer: boolean,
   ) {}
 
-  /** Handles a PA message from `identity`. Non-announcers are ignored. */
-  onRemote(identity: string, role: string, on: boolean, now: number) {
-    if (role !== 'announcer') return;
+  onRemote(identity: string, on: boolean, now: number) {
     if (on) this.remote.set(identity, now);
     else this.remote.delete(identity);
     this.voice.setPA(identity, on);
@@ -36,6 +33,10 @@ export class Announcer {
 
   onLeft(identity: string) {
     if (this.remote.delete(identity)) this.voice.setPA(identity, false);
+  }
+
+  isLive(identity: string): boolean {
+    return this.remote.has(identity);
   }
 
   /** Called every frame. Returns what to tell the player about the mic. */
@@ -48,14 +49,12 @@ export class Announcer {
     }
     this.world.setOnAir(this.liveLocal || this.remote.size > 0);
 
-    if (!this.isAnnouncer) return '';
-
     const near = Math.hypot(playerPos.x - this.world.micPos.x, playerPos.z - this.world.micPos.z) < MIC_USE_RADIUS;
     let hint: PAHint = near ? 'hold' : '';
     let want = false;
     if (near && keyHeld) {
       if (!this.net.micOn) hint = 'unmute';
-      else if (this.remote.size > 0) hint = 'busy'; // someone else has the mic
+      else if (this.remote.size > 0 && !this.liveLocal) hint = 'busy'; // someone else has the mic
       else want = true;
     }
 

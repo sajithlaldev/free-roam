@@ -51,9 +51,8 @@
     <div id="join">
       <form class="card" id="joinForm">
         <h1>Voice World</h1>
-        <p>Walk around and talk. People near you sound louder and come from their direction.</p>
+        <p>Walk around and talk. People near you sound louder and come from their direction. Anyone can step into the yellow ring at the mic and hold E to talk through the speakers around the world.</p>
         <label>Your name <input id="name" maxlength="24" autocomplete="nickname" required /></label>
-        <label>Announcer code (optional) <input id="code" type="password" autocomplete="off" /></label>
         <button id="joinBtn" type="submit" disabled>Loading world…</button>
         <div id="joinErr" role="alert"></div>
         <div class="small">Use headphones to avoid echo. Your browser will ask for microphone access. Desktop browsers only for now.</div>
@@ -71,7 +70,7 @@
         <button id="micBtn" type="button">Mic on (M)</button>
         <span id="hint"></span>
       </div>
-      <div class="panel" id="lockHint">Click the world to look around · WASD move · Shift run · Space jump · M mute</div>
+      <div class="panel" id="lockHint">Click the world to look around · WASD move · Shift run · Space jump · M mute · hold E at the mic to announce</div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

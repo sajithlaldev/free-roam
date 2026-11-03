@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { cloneAvatar, getAvatarTemplate } from './assets';
-import { INTERP_DELAY_MS } from './config';
+import { INTERP_DELAY_MS, SPAWN } from './config';
 import type { World } from './world';
 
 const CAP_HALF = 0.5;
@@ -129,9 +129,8 @@ export class RemotePlayer {
   constructor(
     readonly identity: string,
     readonly name: string,
-    readonly role: string,
   ) {
-    this.avatar = new Avatar(role === 'announcer' ? `📣 ${name}` : name, identity);
+    this.avatar = new Avatar(name, identity);
     this.avatar.group.visible = false; // until the first position arrives
   }
 
@@ -185,7 +184,7 @@ export class RemotePlayer {
 /** WASD + mouse look, Rapier kinematic character controller, third-person camera. */
 export class LocalPlayer {
   readonly avatar: Avatar;
-  readonly pos = new THREE.Vector3(0, 0, 8); // feet
+  readonly pos = new THREE.Vector3(...SPAWN); // feet
   yaw = Math.PI; // facing -Z (towards the mic)
   camYaw = Math.PI;
   elev = 0.35;

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SPEAKER_POSITIONS, SPEAKER_VOICE, VOICE } from './config';
+import { SPEAKERS, SPEAKER_VOICE, VOICE } from './config';
 
 interface Peer {
   el: HTMLAudioElement; // muted element: required for Chrome to start flowing remote WebRTC audio
@@ -98,7 +98,7 @@ export class Voice {
       const gain = this.ctx.createGain();
       gain.gain.value = 0;
       p.src.connect(gain); // one source -> one gain -> N panners (no extra bandwidth)
-      const pans = SPEAKER_POSITIONS.map(([x, y, z]) => {
+      const pans = SPEAKERS.map(({ x, y, z }) => {
         const pan = this.makePanner(SPEAKER_VOICE.refDistance, SPEAKER_VOICE.maxDistance);
         pan.positionX.value = x;
         pan.positionY.value = y;

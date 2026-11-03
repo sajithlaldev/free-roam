@@ -1,21 +1,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { loadOptionalGLB } from './assets';
-import { MIC_POS, SPEAKER_POSITIONS, WORLD_HALF_SIZE } from './config';
-
-// [x, z, width, height, depth, colour] — deterministic so every client sees the same world.
-const OBSTACLES: [number, number, number, number, number, number][] = [
-  [-30, -20, 4, 3, 4, 0x6c7a89],
-  [28, -25, 6, 2, 3, 0x8e6c5a],
-  [-25, 25, 3, 4, 3, 0x5a8e7a],
-  [30, 30, 5, 3, 5, 0x7a5a8e],
-  [0, 36, 10, 2, 2, 0x8e8a5a],
-  [-38, 0, 2, 5, 8, 0x5a6c8e],
-  // little staircase to exercise step-climbing
-  [16, -4, 2, 0.25, 3, 0x9a9a9a],
-  [18, -4, 2, 0.5, 3, 0x9a9a9a],
-  [20, -4, 2, 0.75, 3, 0x9a9a9a],
-];
+import { MIC_POS, OBSTACLES, SPEAKERS, WORLD_HALF_SIZE } from './config';
 
 export class World {
   readonly scene = new THREE.Scene();
@@ -143,8 +129,8 @@ export class World {
     mic.add(pad, base, stem, head);
     this.scene.add(mic);
 
-    // Speakers on poles, aimed at the plaza centre.
-    for (const [x, y, z] of SPEAKER_POSITIONS) {
+    // Speakers on poles, scattered around the world (layout from config.ts).
+    for (const { x, y, z, yaw } of SPEAKERS) {
       const g = new THREE.Group();
       g.position.set(x, 0, z);
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, y, 8), metal);
@@ -158,9 +144,11 @@ export class World {
       cone.position.set(0, y + 0.4, 0.45);
       cab.castShadow = pole.castShadow = true;
       g.add(pole, cab, cone);
-      g.lookAt(0, 0, 0); // +Z faces the plaza centre
-      g.rotation.x = 0;
+      g.rotation.y = yaw;
       this.scene.add(g);
+      // Solid, so players bump into speakers instead of walking through them.
+      const top = y + 1.2;
+      this.physics.createCollider(RAPIER.ColliderDesc.cylinder(top / 2, 0.6).setTranslation(x, top / 2, z));
     }
   }
 
