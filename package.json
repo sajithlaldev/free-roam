@@ -1,0 +1,32 @@
+{
+  "name": "voice-world",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "setup:assets": "node scripts/copy-draco.mjs",
+    "dev": "npm run setup:assets && concurrently -n web,token \"vite\" \"tsx watch server/token.ts\"",
+    "dev:web": "npm run setup:assets && vite",
+    "dev:server": "tsx watch server/token.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run setup:assets && tsc --noEmit && vite build",
+    "start": "tsx server/token.ts"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.21.0",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "livekit-client": "^2.23.0",
+    "livekit-server-sdk": "^2.19.2",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.6",
+    "@types/three": "^0.187.0",
+    "concurrently": "^10.0.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}
