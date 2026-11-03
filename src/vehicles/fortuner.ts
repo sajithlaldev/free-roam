@@ -1,16 +1,16 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { Kit, circle, loft, mirrored, rrect, sweep, topAt, widthAt, type Arch, type Sec } from './kit';
+import { Kit, circle, emblemRing, loft, mirrored, rrect, secAt, sweep, topAt, widthAt, type Arch, type Sec } from './kit';
 import { bench, doorMirror, roundLamp, seat, strip, wiper, type WheelStyle } from './parts';
 import type { ModelDef } from './index';
 
 /**
- * Lifted Fortuner-style SUV (2nd generation shape): long bonnet, raked screen, big
- * trapezoid grille with a chrome bar into slim headlamps, rising beltline with the kinked
- * D-pillar, black B/C pillars and wide arch flares — built up for off-road: a 4-inch lift on
- * long-travel suspension, 35-inch mud-terrains on a wider track, steel winch bumper with a
- * hoop and LED pods, roof rack with light bar, spare, jerry can and recovery boards, snorkel,
- * and nothing hanging underneath (better approach, departure and breakover angles).
+ * Lifted Fortuner-style SUV (1st generation, facelift shape): tall upright nose with a
+ * bonnet scoop, black horizontal-bar grille, large clear headlamps with projectors swept
+ * back into the wings, body-colour bumper with round fog lamps, straight beltline, blacked
+ * B/C pillars, wind deflectors, black roof rails, wide bolt-on arch flares, a snorkel and a
+ * 4-inch long-travel lift on 33-inch all-terrains and black 10-spoke rims — with nothing
+ * hanging below the body.
  *
  * Model frame: +Z forward, +X = left (driver sits at −X), y = 0 at the wheel centres
  * (ground at −0.40). Axles at z = ±1.3725, track 1.62.
@@ -25,11 +25,11 @@ const LOWER: Sec[] = [
   { z: -2.34, yb: 0.07, yt: 0.885, wb: 0.875, wt: 0.855, r: 0.08, bulge: 0.008 },
   { z: -2.15, yb: 0.02, yt: belt(-2.15), wb: 0.905, wt: 0.88, r: 0.055, bulge: 0.016 },
   { z: 0.95, yb: 0.0, yt: belt(0.95), wb: 0.905, wt: 0.88, r: 0.055, bulge: 0.016 },
-  { z: 1.05, yb: 0.0, yt: 0.79, wb: 0.905, wt: 0.88, r: 0.075, crown: 0.02, bulge: 0.016 },
-  { z: 1.8, yb: 0.0, yt: 0.74, wb: 0.905, wt: 0.875, r: 0.1, crown: 0.035, bulge: 0.014 },
-  { z: 2.12, yb: 0.04, yt: 0.695, wb: 0.89, wt: 0.85, r: 0.11, crown: 0.03, bulge: 0.01 },
-  { z: 2.26, yb: 0.1, yt: 0.645, wb: 0.84, wt: 0.79, r: 0.12, crown: 0.025 },
-  { z: 2.32, yb: 0.18, yt: 0.605, wb: 0.76, wt: 0.71, r: 0.12, crown: 0.02 },
+  { z: 1.05, yb: 0.0, yt: 0.8, wb: 0.905, wt: 0.88, r: 0.07, crown: 0.015, bulge: 0.016 },
+  { z: 1.8, yb: 0.0, yt: 0.765, wb: 0.905, wt: 0.88, r: 0.08, crown: 0.025, bulge: 0.014 },
+  { z: 2.12, yb: 0.1, yt: 0.735, wb: 0.895, wt: 0.865, r: 0.09, crown: 0.025, bulge: 0.01 },
+  { z: 2.24, yb: 0.26, yt: 0.705, wb: 0.86, wt: 0.83, r: 0.1, crown: 0.02 },
+  { z: 2.3, yb: 0.3, yt: 0.675, wb: 0.8, wt: 0.77, r: 0.1, crown: 0.015 },
 ];
 const ARCHES: Arch[] = [
   { z: HZ, y: -0.02, r: 0.535 },
@@ -45,12 +45,8 @@ const GREEN: Sec[] = [
   { z: -2.28, yb: gb(-2.28), yt: 1.415, wb: 0.858, wt: 0.722, r: 0.1, crown: 0.025 },
 ];
 const A_END = 0.16;
-const smooth = (a: number, b: number, x: number) => {
-  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
-  return t * t * (3 - 2 * t);
-};
-/** Bottom edge of the side glass (with the kink behind the rear door). */
-const winBottom = (z: number) => belt(z) + 0.03 + 0.15 * smooth(-1.47, -1.63, z);
+/** Bottom edge of the side glass (a straight beltline on this generation). */
+const winBottom = (z: number) => belt(z) + 0.03;
 
 export function fortunerModel(): ModelDef {
   const k = new Kit();
@@ -61,7 +57,7 @@ export function fortunerModel(): ModelDef {
     loft(
       LOWER,
       (c) => {
-        if (c.face === 'front') return Math.abs(c.x) < 0.5 && c.y > 0.26 && c.y < 0.6 ? 'black' : 'paint';
+        if (c.face === 'front') return Math.abs(c.x) < 0.5 && c.y > 0.3 ? 'black' : 'paint';
         if (c.face === 'back') return 'paint';
         const side = c.seg === 'sideL' || c.seg === 'sideR';
         if (side && c.y < 0.115) return 'plastic';
@@ -95,14 +91,24 @@ export function fortunerModel(): ModelDef {
       { capBack: 0.014, closed: true, zBreaks: zb, counts: { side: 12, corner: 5, top: 12, bottom: 6 }, step: 0.05, inset: { glass: -0.007 } },
     ),
   );
-  // Chrome belt line along the bottom of the side glass (and up the kink).
+  // Black window line along the bottom of the side glass.
   for (const s of [1, -1]) {
     const path: THREE.Vector3[] = [];
     for (let z = 0.95; z >= -2.08; z -= 0.05) {
       const y = winBottom(z);
       path.push(new THREE.Vector3(s * (widthAt(GREEN, z, y) + 0.004), y, z));
     }
-    strip(k, 'chrome', path, 0.012, 0.016);
+    strip(k, 'trim', path, 0.012, 0.016);
+  }
+  // Wind deflectors over the four door windows
+  for (const s of [1, -1]) {
+    const path: THREE.Vector3[] = [];
+    for (let z = 0.7; z >= -1.37; z -= 0.06) {
+      const sec = secAt(GREEN, z);
+      const y = sec.yt - sec.r - 0.015;
+      path.push(new THREE.Vector3(s * (widthAt(GREEN, z, y) + 0.02), y, z));
+    }
+    strip(k, 'trim', path, 0.006, 0.06);
   }
   // Glass seals along the roof edge (black)
   for (const s of [1, -1]) {
@@ -114,85 +120,85 @@ export function fortunerModel(): ModelDef {
     strip(k, 'trim', path, 0.008, 0.014);
   }
 
-  // ── steel winch bumper: high, angled-up wings, hoop, LED pods, fairlead, shackles ──
+  // ── front bumper: body colour, black lower lip, wide intake, round fog lamps ──
   const FB: Sec[] = [
-    { z: 1.92, yb: 0.06, yt: 0.27, wb: 0.9, wt: 0.9, r: 0.03 },
-    { z: 2.08, yb: -0.04, yt: 0.28, wb: 0.92, wt: 0.92, r: 0.03 },
-    { z: 2.3, yb: -0.06, yt: 0.28, wb: 0.88, wt: 0.875, r: 0.035 },
-    { z: 2.44, yb: -0.04, yt: 0.27, wb: 0.78, wt: 0.775, r: 0.04 },
+    { z: 1.87, yb: -0.02, yt: 0.33, wb: 0.925, wt: 0.92, r: 0.05 },
+    { z: 2.05, yb: -0.06, yt: 0.34, wb: 0.93, wt: 0.925, r: 0.06 },
+    { z: 2.25, yb: -0.07, yt: 0.34, wb: 0.9, wt: 0.89, r: 0.07 },
+    { z: 2.36, yb: -0.06, yt: 0.33, wb: 0.84, wt: 0.83, r: 0.08 },
+    { z: 2.405, yb: -0.03, yt: 0.31, wb: 0.76, wt: 0.75, r: 0.09, crown: -0.01 },
   ];
-  k.addMap(loft(FB, () => 'powder', { arches: [{ z: HZ, y: -0.02, r: 0.57 }], capFront: 0.015, closed: true, counts: { side: 6, corner: 4, top: 12, bottom: 6 }, step: 0.04 }));
-  const zfb = 2.455;
-  for (const s of [1, -1]) roundLamp(k, s * 0.66, 0.11, zfb - 0.004, 0.04, 'black');
-  // winch fairlead + drum behind it
-  k.at('satin', new RoundedBoxGeometry(0.26, 0.075, 0.04, 2, 0.015), 0, 0.045, zfb + 0.014);
-  k.at('gap', new RoundedBoxGeometry(0.16, 0.022, 0.01, 1, 0.008), 0, 0.045, zfb + 0.034);
-  k.at('steel', new THREE.CylinderGeometry(0.06, 0.06, 0.4, 16).rotateZ(Math.PI / 2), 0, 0.05, zfb - 0.06);
-  k.at('hook', new RoundedBoxGeometry(0.035, 0.05, 0.03, 1, 0.01), 0, 0.045, zfb + 0.05);
-  // red D-shackles
-  for (const x of [-0.47, 0.47]) {
-    k.at('powder', new RoundedBoxGeometry(0.05, 0.08, 0.06, 1, 0.01), x, 0.0, zfb + 0.02);
-    k.at('hook', new THREE.TorusGeometry(0.035, 0.01, 8, 18, Math.PI * 1.25).rotateZ(-Math.PI * 0.62), x, -0.02, zfb + 0.05, 0, Math.PI / 2, 0);
+  k.addMap(loft(FB, (c) => (!c.face && c.y < 0.0 ? 'plastic' : 'paint'), { arches: [{ z: HZ, y: -0.02, r: 0.57 }], capFront: 0.022, closed: true, counts: { side: 8, corner: 5, top: 14, bottom: 8 }, step: 0.04 }));
+  const zfb = 2.428;
+  const intake = new THREE.Shape();
+  intake.moveTo(-0.42, -0.01);
+  intake.lineTo(0.42, -0.01);
+  intake.lineTo(0.46, 0.1);
+  intake.lineTo(-0.46, 0.1);
+  intake.closePath();
+  k.at('grille', new THREE.ShapeGeometry(intake), 0, 0, zfb + 0.002);
+  strip(k, 'plastic', [[-0.42, -0.01], [0.42, -0.01], [0.46, 0.1], [-0.46, 0.1], [-0.42, -0.01]].map(([x, y]) => new THREE.Vector3(x, y, zfb + 0.004)), 0.025, 0.02, new THREE.Vector3(0, 0, 1));
+  for (const s of [1, -1]) {
+    k.at('black', new RoundedBoxGeometry(0.2, 0.14, 0.04, 2, 0.03), s * 0.65, 0.07, 2.39, 0, s * 0.4, 0);
+    roundLamp(k, s * 0.655, 0.07, 2.412, 0.042, 'chrome');
   }
-  // tubular hoop over the bumper, with two LED pods on it
-  {
-    const hoop = [
-      [-0.5, 0.27, 2.43],
-      [-0.47, 0.44, 2.47],
-      [-0.4, 0.52, 2.49],
-      [0.4, 0.52, 2.49],
-      [0.47, 0.44, 2.47],
-      [0.5, 0.27, 2.43],
-    ].map(([x, y, z]) => new THREE.Vector3(x, y, z));
-    k.add('powder', sweep(new THREE.CatmullRomCurve3(hoop).getPoints(30), circle(0.026, 10), { caps: true }));
-    for (const x of [-0.28, 0.28]) {
-      k.at('black', new RoundedBoxGeometry(0.11, 0.09, 0.07, 2, 0.015), x, 0.575, 2.49);
-      k.at('led', new RoundedBoxGeometry(0.09, 0.07, 0.01, 1, 0.01), x, 0.575, 2.526);
-      k.at('powder', new THREE.BoxGeometry(0.03, 0.05, 0.03), x, 0.53, 2.49);
-    }
-  }
-  // skid plate tucked up under the bumper
-  k.at('satin', new RoundedBoxGeometry(0.9, 0.02, 0.45, 2, 0.008), 0, -0.07, 2.2, -0.28, 0, 0);
 
-  // ── grille: hex insert, chrome surround + top bar into the lamps, two bars ──
-  const zg = 2.346;
-  const gt = 0.585;
-  const gbm = 0.275;
+  // ── grille: black, three thick horizontal bars in a black frame, plain chrome oval ──
+  const zg = 2.328;
+  const gt = 0.66;
+  const gbm = 0.35;
   const gShape = new THREE.Shape();
-  gShape.moveTo(-0.4, gbm);
-  gShape.lineTo(0.4, gbm);
-  gShape.lineTo(0.52, gt);
-  gShape.lineTo(-0.52, gt);
-  gShape.closePath();
+  gShape.moveTo(-0.41, gbm);
+  gShape.lineTo(0.41, gbm);
+  gShape.quadraticCurveTo(0.47, gbm + 0.02, 0.48, gt - 0.03);
+  gShape.lineTo(0.46, gt);
+  gShape.lineTo(-0.46, gt);
+  gShape.lineTo(-0.48, gt - 0.03);
+  gShape.quadraticCurveTo(-0.47, gbm + 0.02, -0.41, gbm);
   k.at('grille', new THREE.ShapeGeometry(gShape), 0, 0, zg);
-  const outline = [[-0.4, gbm], [0.4, gbm], [0.52, gt], [-0.52, gt], [-0.4, gbm]].map(([x, y]) => new THREE.Vector3(x, y, zg + 0.012));
-  strip(k, 'chrome', outline, 0.03, 0.025, new THREE.Vector3(0, 0, 1));
-  strip(k, 'chrome', [new THREE.Vector3(-0.66, gt + 0.012, zg - 0.004), new THREE.Vector3(-0.52, gt, zg + 0.012), new THREE.Vector3(0.52, gt, zg + 0.012), new THREE.Vector3(0.66, gt + 0.012, zg - 0.004)], 0.05, 0.03, new THREE.Vector3(0, 0, 1));
-  for (const [y, w] of [[0.49, 0.95], [0.385, 0.87]] as const) {
-    k.at('trim', new RoundedBoxGeometry(w, 0.05, 0.03, 2, 0.012), 0, y, zg + 0.018);
-    k.at('chrome', new RoundedBoxGeometry(w, 0.008, 0.008, 1, 0.003), 0, y + 0.022, zg + 0.034);
-  }
+  strip(k, 'trim', [[-0.41, gbm], [0.41, gbm], [0.475, gbm + 0.06], [0.48, gt - 0.03], [0.46, gt], [-0.46, gt], [-0.48, gt - 0.03], [-0.475, gbm + 0.06], [-0.41, gbm]].map(([x, y]) => new THREE.Vector3(x, y, zg + 0.012)), 0.035, 0.03, new THREE.Vector3(0, 0, 1));
+  for (const y of [0.425, 0.505, 0.585]) k.at('trim', new RoundedBoxGeometry(0.9 - (0.6 - y) * 0.25, 0.042, 0.03, 2, 0.012), 0, y, zg + 0.02);
+  emblemRing(k, 0, 0.535, zg + 0.04, 0.075, 0.05);
 
-  // ── headlamps: slim, swept round the nose corners (built on the left, mirrored) ──
+  // ── headlamps: big clear units with a projector, swept back and up into the wings ──
   {
     const L = new Kit();
-    const yl = 0.575;
     const p: THREE.Vector3[] = [];
-    for (let x = 0.53; x < 0.7; x += 0.04) p.push(new THREE.Vector3(x, yl + (x - 0.53) * 0.05, 2.346));
-    for (let z = 2.33; z >= 2.08; z -= 0.035) p.push(new THREE.Vector3(widthAt(LOWER, z, yl + 0.012) + 0.004, yl + 0.012 + (2.33 - z) * 0.1, z));
-    const taper = (u: number) => [1, 1 - 0.35 * u] as [number, number];
-    L.add('lens', sweep(p, [[0.0, -0.058], [0.012, -0.04], [0.017, 0], [0.012, 0.04], [0.0, 0.058], [-0.03, 0.052], [-0.03, -0.052]], { scale: taper, caps: true }));
-    L.add('lampHouse', sweep(p, [[-0.004, -0.054], [-0.004, -0.03], [-0.035, -0.03], [-0.035, -0.054]], { scale: taper, caps: true }));
-    L.add('reflector', sweep(p, [[-0.006, -0.03], [-0.004, 0.0], [-0.006, 0.052], [-0.036, 0.05], [-0.036, -0.03]], { scale: taper, caps: true }));
-    L.add('led', sweep(p.slice(0, -1), rrect(0.006, 0.012, 0.004, 1, 0.004, -0.042), { scale: taper, caps: true }));
-    for (const i of [1, 3]) {
-      const q = p[i];
-      L.at('bulb', new THREE.SphereGeometry(0.024, 16, 10), q.x, q.y + 0.012, q.z - 0.014);
-      L.at('lampHouse', new THREE.TorusGeometry(0.03, 0.006, 6, 20), q.x, q.y + 0.012, q.z - 0.008);
+    const ys: number[] = [];
+    for (let x = 0.5; x < 0.74; x += 0.04) {
+      const yc = 0.53 + (x - 0.5) * 0.12;
+      p.push(new THREE.Vector3(x, yc, 2.327));
     }
-    const tip = p[p.length - 2];
-    L.at('amber', new RoundedBoxGeometry(0.012, 0.03, 0.06, 1, 0.005), tip.x - 0.008, tip.y, tip.z);
+    for (let z = 2.3; z >= 2.0; z -= 0.04) {
+      const yc = 0.56 + (2.3 - z) * 0.2;
+      p.push(new THREE.Vector3(widthAt(LOWER, z, yc) + 0.004, yc, z));
+    }
+    void ys;
+    const half = (u: number) => [1, 0.13 - 0.085 * u] as [number, number];
+    L.add('lens', sweep(p, [[0, -1], [0.012, -0.85], [0.018, 0], [0.012, 0.85], [0, 1], [-0.035, 0.92], [-0.035, -0.92]], { scale: half, caps: true }));
+    L.add('chrome', sweep(p, [[-0.006, -0.92], [-0.004, 0.0], [-0.006, 0.92], [-0.036, 0.88], [-0.036, -0.88]], { scale: half, caps: true }));
+    L.add('lampHouse', sweep(p, rrect(0.012, 0.25, 0.004, 1, -0.004, 0.25), { scale: half, caps: true }));
+    // projector + main reflector bowl
+    const q = p[1];
+    L.at('lampHouse', new THREE.CylinderGeometry(0.05, 0.05, 0.02, 24).rotateX(Math.PI / 2), q.x, q.y - 0.02, q.z - 0.02);
+    L.at('reflector', new THREE.SphereGeometry(0.038, 18, 12), q.x, q.y - 0.02, q.z - 0.01);
+    L.at('chrome', new THREE.TorusGeometry(0.044, 0.006, 6, 24), q.x, q.y - 0.02, q.z - 0.004);
+    const q2 = p[4];
+    L.at('bulb', new THREE.SphereGeometry(0.02, 12, 8), q2.x, q2.y + 0.01, q2.z - 0.02);
+    // amber indicator in the swept-back tail of the lamp
+    L.add('amber', sweep(p.slice(7, 12), rrect(0.008, 0.9, 0.003, 1, -0.008, -0.1), { scale: (u) => [1, 0.13 - 0.085 * (0.55 + u * 0.4)] as [number, number], caps: true }));
     mirrored(k, L);
+  }
+
+  // ── bonnet scoop ──
+  {
+    const zs = 1.5;
+    const path: THREE.Vector3[] = [];
+    for (let x = -0.26; x <= 0.261; x += 0.052) path.push(new THREE.Vector3(x, topAt(LOWER, zs, x) - 0.006, zs));
+    k.add('paint', sweep(path, [[-0.32, 0], [0.12, 0], [0.12, 0.058], [0.08, 0.062], [-0.32, 0.008]], { caps: true }));
+    const top = topAt(LOWER, zs + 0.12, 0);
+    k.at('gap', new RoundedBoxGeometry(0.46, 0.036, 0.01, 1, 0.008), 0, top + 0.03, zs + 0.123);
+    for (let i = -3; i <= 3; i++) k.at('black', new THREE.BoxGeometry(0.008, 0.034, 0.012), i * 0.06, top + 0.03, zs + 0.125);
   }
 
   // ── bonnet details, wipers, washer jets ──
@@ -221,13 +227,11 @@ export function fortunerModel(): ModelDef {
   }
   for (const s of [1, -1]) {
     // door handles
-    for (const z of [0.12, -0.86]) k.at('chrome', new RoundedBoxGeometry(0.03, 0.036, 0.17, 2, 0.014), s * (widthAt(LOWER, z, 0.7) + 0.01), 0.7, z);
+    for (const z of [0.12, -0.86]) k.at('paint', new RoundedBoxGeometry(0.03, 0.036, 0.17, 2, 0.014), s * (widthAt(LOWER, z, 0.7) + 0.01), 0.7, z);
     // mirrors (body colour, indicator)
     const mz = 0.8;
     const mx = widthAt(GREEN, mz, 0.92);
     if (s > 0) doorMirror(k, mx - 0.03, 0.95, mz, 'paint', 1.15, true);
-    // mud flaps (short, so they don't snag)
-    for (const z of [HZ - 0.6, -HZ - 0.6]) k.at('rubber', new RoundedBoxGeometry(0.3, 0.22, 0.012, 1, 0.004), s * 0.84, -0.06, z);
   }
   // mirror on the right (driver) side
   {
@@ -266,35 +270,8 @@ export function fortunerModel(): ModelDef {
   for (const s of [1, -1]) {
     const path: THREE.Vector3[] = [];
     for (let z = 0.08; z >= -2.02; z -= 0.1) path.push(new THREE.Vector3(s * 0.6, topAt(GREEN, z, 0.6) + 0.055, z));
-    strip(k, 'satin', path, 0.035, 0.035);
+    strip(k, 'black', path, 0.035, 0.035);
     for (const z of [0.08, -0.95, -2.02]) k.at('black', new RoundedBoxGeometry(0.05, 0.06, 0.12, 2, 0.015), s * 0.6, topAt(GREEN, z, 0.6) + 0.025, z);
-  }
-  // roof rack on the rails: tube frame, slats, light bar, spare, jerry can, recovery boards
-  const RY = topAt(GREEN, -0.9, 0) + 0.15;
-  {
-    const z0 = 0.12;
-    const z1 = -1.98;
-    const xw = 0.68;
-    const loop = [[-xw, z0], [xw, z0], [xw, z1], [-xw, z1], [-xw, z0]].map(([x, z]) => new THREE.Vector3(x, RY, z));
-    strip(k, 'powder', loop, 0.035, 0.035);
-    strip(k, 'powder', [[-xw, z0], [xw, z0], [xw, z1], [-xw, z1], [-xw, z0]].map(([x, z]) => new THREE.Vector3(x, RY + 0.07, z)), 0.025, 0.025);
-    for (let z = z0 - 0.25; z > z1 + 0.1; z -= 0.3) k.at('powder', new RoundedBoxGeometry(xw * 2, 0.02, 0.05, 1, 0.008), 0, RY - 0.005, z);
-    for (const s of [1, -1]) {
-      for (const z of [z0 - 0.05, -0.95, z1 + 0.05]) {
-        k.at('powder', new THREE.BoxGeometry(0.03, 0.07, 0.03), s * xw, RY + 0.035, z);
-        k.at('powder', new THREE.BoxGeometry(0.1, 0.1, 0.05), s * 0.62, (RY + topAt(GREEN, z, 0.6) + 0.06) / 2, z);
-      }
-      // orange recovery boards strapped along the sides
-      k.at('orange', new RoundedBoxGeometry(0.3, 0.025, 1.05, 2, 0.01), s * 0.48, RY + 0.025, -0.45);
-      for (let i = 0; i < 9; i++) k.at('orange', new THREE.BoxGeometry(0.22, 0.012, 0.03), s * 0.48, RY + 0.044, -0.9 + i * 0.11);
-    }
-    // LED light bar across the front of the rack
-    k.at('black', new RoundedBoxGeometry(1.1, 0.085, 0.08, 2, 0.02), 0, RY + 0.06, z0 + 0.06);
-    k.at('led', new RoundedBoxGeometry(1.04, 0.05, 0.01, 1, 0.006), 0, RY + 0.06, z0 + 0.102);
-    for (const x of [-0.5, 0.5]) k.at('powder', new THREE.BoxGeometry(0.03, 0.06, 0.06), x, RY + 0.02, z0 + 0.05);
-    // jerry can
-    k.at('powder', new RoundedBoxGeometry(0.34, 0.26, 0.17, 2, 0.02), 0.0, RY + 0.13, -0.6);
-    k.at('satin', new THREE.CylinderGeometry(0.025, 0.025, 0.03, 10), 0.12, RY + 0.27, -0.6);
   }
   {
     const sp: THREE.Vector3[] = [];
@@ -306,25 +283,21 @@ export function fortunerModel(): ModelDef {
 
   // ── rear: bumper, tail lamps, chrome garnish, tailgate lines, plate, wiper, step ──
   const RB: Sec[] = [
-    { z: -2.46, yb: 0.02, yt: 0.29, wb: 0.8, wt: 0.795, r: 0.04 },
-    { z: -2.3, yb: -0.01, yt: 0.3, wb: 0.9, wt: 0.895, r: 0.035 },
-    { z: -2.08, yb: 0.04, yt: 0.3, wb: 0.92, wt: 0.92, r: 0.03 },
-    { z: -1.9, yb: 0.1, yt: 0.29, wb: 0.91, wt: 0.91, r: 0.03 },
+    { z: -2.44, yb: 0.0, yt: 0.31, wb: 0.8, wt: 0.79, r: 0.07 },
+    { z: -2.38, yb: -0.03, yt: 0.32, wb: 0.87, wt: 0.86, r: 0.07 },
+    { z: -2.2, yb: -0.02, yt: 0.32, wb: 0.92, wt: 0.915, r: 0.06 },
+    { z: -1.88, yb: 0.02, yt: 0.31, wb: 0.925, wt: 0.92, r: 0.05 },
   ];
-  k.addMap(loft(RB, () => 'powder', { arches: [{ z: -HZ, y: -0.02, r: 0.57 }], capBack: 0.015, closed: true, counts: { side: 6, corner: 4, top: 12, bottom: 6 }, step: 0.04 }));
-  k.at('rubber', new RoundedBoxGeometry(0.8, 0.012, 0.16, 1, 0.005), 0, 0.302, -2.36);
-  for (const x of [-0.5, 0.5]) {
-    k.at('powder', new RoundedBoxGeometry(0.05, 0.08, 0.06, 1, 0.01), x, 0.07, -2.49);
-    k.at('hook', new THREE.TorusGeometry(0.035, 0.01, 8, 18, Math.PI * 1.25).rotateZ(-Math.PI * 0.62), x, 0.05, -2.52, 0, Math.PI / 2, 0);
-  }
+  k.addMap(loft(RB, (c) => (!c.face && c.y < 0.06 ? 'plastic' : 'paint'), { arches: [{ z: -HZ, y: -0.02, r: 0.57 }], capBack: 0.02, closed: true, counts: { side: 8, corner: 5, top: 14, bottom: 8 }, step: 0.04 }));
+  k.at('rubber', new RoundedBoxGeometry(0.8, 0.012, 0.16, 1, 0.005), 0, 0.326, -2.36);
   {
     // tail lamps: wrap from the side round the corner onto the tailgate (left, mirrored)
     const L = new Kit();
-    const yl = 0.74;
+    const yl = 0.8;
     const p: THREE.Vector3[] = [];
-    for (let z = -2.12; z > -2.37; z -= 0.035) p.push(new THREE.Vector3(widthAt(LOWER, z, yl) + 0.003, yl, z));
-    for (let x = 0.8; x >= 0.62; x -= 0.045) p.push(new THREE.Vector3(x, yl, -2.425));
-    const taper = (u: number) => [1, 1 - 0.45 * u] as [number, number];
+    for (let z = -2.16; z > -2.37; z -= 0.035) p.push(new THREE.Vector3(widthAt(LOWER, z, yl) + 0.003, yl, z));
+    for (let x = 0.8; x >= 0.68; x -= 0.04) p.push(new THREE.Vector3(x, yl, -2.425));
+    const taper = (u: number) => [1, 1.15 - 0.3 * u] as [number, number];
     L.add('redLens', sweep(p, [[0, -0.15], [0.01, -0.12], [0.014, 0], [0.01, 0.12], [0, 0.15], [-0.03, 0.14], [-0.03, -0.14]], { scale: taper, caps: true }));
     L.add('brake', sweep(p.slice(1, -1), rrect(0.006, 0.05, 0.003, 1, 0.012, 0.06), { scale: taper, caps: true }));
     L.add('brake', sweep(p.slice(1, -1), rrect(0.006, 0.03, 0.003, 1, 0.012, -0.07), { scale: taper, caps: true }));
@@ -334,7 +307,7 @@ export function fortunerModel(): ModelDef {
     mirrored(k, L);
   }
   for (const s of [1, -1]) {
-    k.at('reflectorRed', new RoundedBoxGeometry(0.12, 0.03, 0.01, 1, 0.004), s * 0.7, 0.2, -2.477);
+    k.at('reflectorRed', new RoundedBoxGeometry(0.12, 0.03, 0.01, 1, 0.004), s * 0.68, 0.2, -2.463);
     // tailgate shut lines
     strip(k, 'gap', [new THREE.Vector3(s * 0.615, 0.3, -2.424), new THREE.Vector3(s * 0.615, 0.88, -2.424)], 0.005, 0.004, new THREE.Vector3(0, 0, -1));
   }
@@ -353,8 +326,8 @@ export function fortunerModel(): ModelDef {
   k.at('steel', new THREE.CylinderGeometry(0.038, 0.038, 0.22, 16, 1, true).rotateX(Math.PI / 2), -0.6, 0.02, -2.34);
 
   // ── front plate ──
-  k.at('plate', new THREE.PlaneGeometry(0.52, 0.114), 0, 0.185, zfb + 0.006);
-  k.at('black', new RoundedBoxGeometry(0.56, 0.14, 0.012, 2, 0.01), 0, 0.185, zfb - 0.002);
+  k.at('plate', new THREE.PlaneGeometry(0.52, 0.114), 0, 0.2, zfb + 0.008);
+  k.at('black', new RoundedBoxGeometry(0.56, 0.14, 0.012, 2, 0.01), 0, 0.2, zfb);
 
   // ── wheel wells, chassis, underbody ──
   for (const a of ARCHES)
@@ -392,14 +365,13 @@ export function fortunerModel(): ModelDef {
   k.at('black', new RoundedBoxGeometry(0.04, 0.1, 0.2, 2, 0.015), 0, 1.36, 0.12); // rear-view mirror
   k.at('mirror', new THREE.PlaneGeometry(0.18, 0.07).rotateY(Math.PI), 0, 1.36, 0.098);
 
-  const wheel: WheelStyle = { R: 0.44, W: 0.32, rimR: 0.216, spokes: 6, rim: 'rimBlack', lip: 'rimBlack', tread: 'mt', caliper: 'caliperRed', lugs: 6, dish: 0.022 };
+  const wheel: WheelStyle = { R: 0.42, W: 0.3, rimR: 0.216, spokes: 10, spokeW: 0.011, rim: 'rimBlack', lip: 'rimBlack', tread: 'at', caliper: 'caliperGrey', lugs: 6, dish: 0.03 };
   return {
     body: k.build(),
     wheel,
     track: TX * 2,
     wheelbase: HZ * 2,
     steering: { pos: new THREE.Vector3(-0.42, 1.0, 0.53), tilt: -1.05, R: 0.19 },
-    spare: { pos: new THREE.Vector3(0, RY + 0.17, -1.4), rot: [0, 0, Math.PI / 2] },
     gear: {
       axles: [{ wheels: [2, 3], r: 0.048, diff: { x: 0.0, r: 0.13 } }],
       links: [
@@ -409,8 +381,8 @@ export function fortunerModel(): ModelDef {
           return [
             { key: 'steel', r: 0.022, a: { body: [s * 0.36, -0.15, HZ + 0.05] }, b: { wheel: w, off: [-s * 0.13, -0.14, 0] } },
             { key: 'steel', r: 0.018, a: { body: [s * 0.42, 0.17, HZ - 0.02] }, b: { wheel: w, off: [-s * 0.12, 0.15, 0] } },
-            { key: 'shockGold', r: 0.028, a: { body: [s * 0.5, 0.45, HZ - 0.05] }, b: { wheel: w, off: [-s * 0.16, -0.06, -0.02] } },
-            { key: 'springRed', r: 0.065, coil: true, a: { body: [s * 0.5, 0.43, HZ - 0.05] }, b: { wheel: w, off: [-s * 0.17, 0.05, -0.02] } },
+            { key: 'shockBlack', r: 0.028, a: { body: [s * 0.5, 0.45, HZ - 0.05] }, b: { wheel: w, off: [-s * 0.16, -0.06, -0.02] } },
+            { key: 'springBlack', r: 0.065, coil: true, a: { body: [s * 0.5, 0.43, HZ - 0.05] }, b: { wheel: w, off: [-s * 0.17, 0.05, -0.02] } },
             { key: 'steel', r: 0.022, a: { body: [s * 0.13, -0.06, HZ] }, b: { wheel: w, off: [-s * 0.1, 0, 0] } },
           ];
         }),
@@ -418,9 +390,9 @@ export function fortunerModel(): ModelDef {
         ...[2, 3].flatMap((w) => {
           const s = w === 2 ? 1 : -1;
           return [
-            { key: 'shockGold', r: 0.028, a: { body: [s * 0.6, 0.4, -HZ - 0.12] }, b: { wheel: w, off: [-s * 0.2, -0.06, -0.12] } },
-            { key: 'springRed', r: 0.07, coil: true, a: { body: [s * 0.5, 0.33, -HZ + 0.12] }, b: { wheel: w, off: [-s * 0.3, 0.06, 0.12] } },
-            { key: 'steel', r: 0.025, a: { body: [s * 0.44, -0.08, -0.5] }, b: { wheel: w, off: [-s * 0.34, -0.06, 0] } },
+            { key: 'shockBlack', r: 0.028, a: { body: [s * 0.6, 0.4, -HZ - 0.12] }, b: { wheel: w, off: [-s * 0.2, -0.06, -0.12] } },
+            { key: 'springBlack', r: 0.07, coil: true, a: { body: [s * 0.5, 0.33, -HZ + 0.12] }, b: { wheel: w, off: [-s * 0.3, 0.06, 0.12] } },
+            { key: 'steel', r: 0.025, a: { body: [s * 0.44, 0.06, -0.55] }, b: { wheel: w, off: [-s * 0.34, -0.03, 0] } },
           ];
         }),
       ],

@@ -358,7 +358,7 @@ export class OffroadRace {
 
   private finish() {
     const car = this.car!;
-    const ms = this.time * 1000;
+    const ms = Math.round(this.time * 1000);
     const model = car.spec.model;
     const prev = loadBest(model);
     const best = prev === null || ms < prev;

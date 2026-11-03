@@ -14,6 +14,8 @@ export interface WheelStyle {
   tread: 'at' | 'ht' | 'mt';
   caliper: 'caliperRed' | 'caliperGrey';
   lugs: number;
+  /** spoke half-width at the hub (m); default 0.026 */
+  spokeW?: number;
   /** how far in from the tyre's outer face the spoke face sits (dish) */
   dish: number;
 }
@@ -87,7 +89,8 @@ export function wheelGeos(st: WheelStyle): WheelGeos {
   for (let k = 0; k < N; k++) {
     const a0 = (k / N) * Math.PI * 2;
     const a1 = ((k + 1) / N) * Math.PI * 2;
-    const sw = (r: number) => (0.026 + 0.018 * ((r - r1) / (r2 - r1))) / r; // spoke half-width (rad)
+    const w0 = st.spokeW ?? 0.026;
+    const sw = (r: number) => (w0 + w0 * 0.7 * ((r - r1) / (r2 - r1))) / r; // spoke half-width (rad)
     const hole = new THREE.Path();
     const n = 10;
     for (let i = 0; i <= n; i++) {

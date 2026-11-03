@@ -75,16 +75,16 @@ export interface VehicleSpec {
 export const JIMNY: VehicleSpec = {
   name: 'Jimny',
   model: 'jimny',
-  mass: 1090,
-  inertia: { x: 1320, y: 1360, z: 460 },
-  com: { x: 0, y: 0.12, z: 0.05 },
-  wheelbase: 2.25,
-  track: 1.4,
-  wheelRadius: 0.345,
-  wheelWidth: 0.2,
+  mass: 1250,
+  inertia: { x: 1750, y: 1800, z: 540 },
+  com: { x: 0, y: 0.17, z: 0.05 },
+  wheelbase: 2.59,
+  track: 1.44,
+  wheelRadius: 0.37,
+  wheelWidth: 0.215,
   mountY: 0.22,
-  restLength: 0.36,
-  maxTravel: 0.3,
+  restLength: 0.44,
+  maxTravel: 0.36,
   stiffness: 16,
   compression: 1.45,
   relaxation: 2.1,
@@ -100,7 +100,7 @@ export const JIMNY: VehicleSpec = {
   torque: [[800, 88], [1500, 104], [2500, 118], [3500, 127], [4000, 130], [5000, 126], [6000, 116], [6500, 95]],
   gears: [2.875, 1.568, 1.0, 0.697],
   reverse: 2.3,
-  finalDrive: 4.3,
+  finalDrive: 4.6,
   transferHigh: 1.32,
   transferLow: 2.643,
   efficiency: 0.86,
@@ -113,37 +113,36 @@ export const JIMNY: VehicleSpec = {
   tcs: 1.1,
   esp: false,
   reverseLimit: 7,
-  colliders: [[0.8, 0.33, 1.68, 0, 0.22, 0], [0.74, 0.4, 1.05, 0, 0.95, -0.55], [0.74, 0.08, 0.6, 0, 0.6, 1.1]],
+  colliders: [[0.8, 0.33, 1.9, 0, 0.22, 0], [0.74, 0.4, 1.23, 0, 0.95, -0.62], [0.74, 0.08, 0.6, 0, 0.6, 1.27]],
   seats: [
-    new THREE.Vector3(-0.37, 0.16, -0.05), // driver (right-hand drive)
-    new THREE.Vector3(0.37, 0.16, -0.05),
+    new THREE.Vector3(-0.37, 0.16, 0.12), // driver (right-hand drive)
+    new THREE.Vector3(0.37, 0.16, 0.12),
     new THREE.Vector3(-0.35, 0.2, -0.95),
     new THREE.Vector3(0.35, 0.2, -0.95),
   ],
   eye: 0.74,
-  camDist: 6,
-  exitX: 1.45,
+  camDist: 6.6,
+  exitX: 1.55,
   diesel: false,
-  bodyRoll: 0.0085,
+  bodyRoll: 0.0095,
   bodyPitch: 0.0055,
 };
 
 /**
- * Fortuner-style SUV built for off-road: 4-inch long-travel lift, 35-inch mud-terrains on
- * a wider track, steel bumpers and a loaded roof rack (2.3 t, higher centre of mass);
- * 2.8 L diesel (500 Nm from 1,600 rpm), 6-speed automatic re-geared for the big tyres, low
- * range. It leans and wallows like a heavy GTA IV SUV.
+ * Fortuner-style SUV on a 4-inch long-travel lift with 33-inch all-terrains on a wider track
+ * (2.2 t, higher centre of mass); 3.0 L diesel (500 Nm from 1,600 rpm), automatic re-geared
+ * for the big tyres, low range. It leans and wallows like a heavy GTA IV SUV.
  */
 export const FORTUNER: VehicleSpec = {
   name: 'Fortuner',
   model: 'fortuner',
-  mass: 2300,
-  inertia: { x: 4200, y: 4500, z: 1300 },
-  com: { x: 0, y: 0.3, z: 0.1 },
+  mass: 2200,
+  inertia: { x: 4000, y: 4300, z: 1200 },
+  com: { x: 0, y: 0.27, z: 0.1 },
   wheelbase: 2.745,
   track: 1.68,
-  wheelRadius: 0.44,
-  wheelWidth: 0.32,
+  wheelRadius: 0.42,
+  wheelWidth: 0.3,
   mountY: 0.34,
   restLength: 0.6,
   maxTravel: 0.44,
@@ -162,7 +161,7 @@ export const FORTUNER: VehicleSpec = {
   torque: [[750, 260], [1200, 400], [1600, 500], [2800, 500], [3400, 440], [4000, 380], [4600, 300]],
   gears: [3.6, 2.09, 1.49, 1.2, 1.0, 0.79],
   reverse: 3.3,
-  finalDrive: 4.1,
+  finalDrive: 3.909,
   transferHigh: 1.0,
   transferLow: 2.566,
   efficiency: 0.85,

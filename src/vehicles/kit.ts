@@ -465,6 +465,15 @@ export class Kit {
   }
 }
 
+/** A plain chrome oval ring (stand-in for a badge; no real brands). */
+export function emblemRing(k: Kit, x: number, y: number, z: number, w: number, h: number) {
+  const path = Array.from({ length: 33 }, (_, i) => {
+    const a = (i / 32) * Math.PI * 2;
+    return new THREE.Vector3(x + Math.cos(a) * w, y + Math.sin(a) * h, z);
+  });
+  k.add('chrome', sweep(path, circle(0.008, 6), { up: new THREE.Vector3(0, 0, 1) }));
+}
+
 /** Add a left-side kit to `k` twice: as built, and mirrored to the right (−X). */
 export function mirrored(k: Kit, left: Kit) {
   for (const [key, g] of left.build()) {

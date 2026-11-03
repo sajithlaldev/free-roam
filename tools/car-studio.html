@@ -31,7 +31,7 @@ ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
 const model = q.get('model') || 'fortuner';
-const color = parseInt(q.get('color') || (model === 'fortuner' ? 'f1f1ee' : 'e8c21b'), 16);
+const color = parseInt(q.get('color') || (model === 'fortuner' ? 'f1f1ee' : 'c5d313'), 16);
 const v = (model === 'fortuner' ? buildFortuner : buildJimny)(color, 'KL-07 BF 4321');
 const spec = model === 'fortuner' ? FORTUNER : JIMNY;
 const wy = restWheelY(spec);

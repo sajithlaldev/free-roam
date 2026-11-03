@@ -42,7 +42,7 @@ export class Traffic {
       [0, FORTUNER, 0x9fa3a8, 12.5, 41],
       [0, JIMNY, 0x1f3a64, 10, 83],
       [1, FORTUNER, 0x2a2b2e, 13, 10],
-      [1, JIMNY, 0xe8c21b, 11, 64],
+      [1, JIMNY, 0xc5d313, 11, 64],
       [2, JIMNY, 0xf2f2ee, 8.5, 5],
       [3, FORTUNER, 0x6d4c2e, 8, 20],
     ];

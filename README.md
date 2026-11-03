@@ -116,13 +116,13 @@ Always on: sky with image-based lighting, a drifting procedural cloud layer, win
 
 Two models, both data-driven (`VehicleSpec`) on Rapier's ray-cast vehicle controller:
 
-| | Jimny | Fortuner (4-inch lift, 35-inch M/T) |
+| | Jimny 5-door (lifted, 29-inch A/T) | Fortuner (4-inch lift, 33-inch A/T) |
 | --- | --- | --- |
-| Mass | 1,090 kg | 2,300 kg |
+| Mass | 1,250 kg | 2,200 kg |
 | Engine | 1.5 petrol, 130 Nm | 2.8 diesel, 500 Nm @ 1,600–2,800 |
 | Gearbox | 4-speed auto + 4H/4L | 6-speed auto + 4H/4L |
-| 0–100 km/h (measured) | 11.8 s | 12.1 s |
-| 100–0 km/h | 36.6 m | 43.9 m |
+| 0–100 km/h (measured) | 14.0 s | 11.5 s |
+| 100–0 km/h | 41.4 m | 42.2 m |
 
 **Handling is tuned to feel like GTA IV**: heavy and momentum-driven; soft, under-damped springs; a sprung-body model so the body visibly leans out of corners, dives under braking, squats under power and wobbles after quick direction changes; no stability control, lighter traction control and a slightly loose rear so slides are easy to start and catch, with progressive understeer at the limit.
 
@@ -133,18 +133,22 @@ Both vehicles are modelled in code with a small toolkit (`kit.ts`):
 - **Swept parts:** a 2D profile run along a path, used for bumpers, arch flares and cladding, lamps that wrap round the corners, chrome belt lines, roof rails, the snorkel and trim.
 
 Details on both:
-- **Wheels:** the tyre carcass has bulging sidewalls and a lettered sidewall texture, with separate tread blocks (all-terrain on the Fortuner, highway tread on the Jimny). Rims are spoked alloys with lips and lug nuts, with brake discs and calipers behind them (calipers stay put while the wheel turns).
+- **Wheels:** the tyre carcass has bulging sidewalls and a lettered sidewall texture, with separate tread blocks (all-terrain on both). Rims are spoked alloys with lips and lug nuts, with brake discs and calipers behind them (calipers stay put while the wheel turns).
 - **Lamps and glass:** lamps have reflectors, bulbs or projectors, clear lenses and LED strips. Glass is tinted and reflective, set slightly into the frame.
 - **Underneath:** wheel-well liners, a ladder frame and underbody, and running gear that follows the wheels: axle beams with diffs, wishbones and links, and shocks with coil springs.
 - **Cabin:** seats, dash, gauges, screen, console, door cards and headliner, so the first-person view works.
 
 Model-specific:
-- **Jimny:** boxy shape with drip rails, five-slot grille, round lamps, square-cut black over-fenders, side-hinged tailgate with the spare under a cover.
-- **Fortuner:** big trapezoid grille with a chrome bar into slim headlamps, rising beltline with the kinked rear quarter glass, black B and C pillars and wrap-around tail lamps. It's built for off-road:
-  - **Lift:** 4-inch long-travel lift (about 11 cm more ground clearance, with the coilovers visible in the gap above the tyres) on 35-inch mud-terrains, a wider track and trimmed arches with wide flares.
-  - **Bumpers:** a steel winch bumper with a hoop, LED pods, fairlead and red shackles, and a high steel rear bumper.
-  - **Roof:** a roof rack with an LED light bar, the spare tyre, a jerry can and orange recovery boards.
-  - **Clearance:** snorkel, short mud flaps, and nothing hanging under the body.
+- **Jimny (5-door):**
+  - **Body:** long-wheelbase body (2.59 m) with rear doors and a small quarter window, two-tone black roof and A-pillars, drip rails and a roof antenna.
+  - **Front and sides:** chrome-ringed round lamps either side of a piano-black five-slot grille, flat square-cut black over-fenders and a black sill strip.
+  - **Bumpers and tailgate:** black bumpers with round fog lamps and corner tail lamps, and a side-hinged tailgate carrying the spare.
+  - **Running gear:** a mild long-travel lift (about 8 cm) with all-terrains on gunmetal alloys.
+- **Fortuner (1st-generation facelift look):**
+  - **Front:** tall upright nose with a bonnet scoop, black three-bar grille, large clear headlamps with projectors swept back into the wings, and a body-colour bumper with round fog lamps and a wide lower intake.
+  - **Sides and roof:** straight beltline, blacked-out B and C pillars, wind deflectors, black roof rails, tall tail lamps up the D-pillars, wide bolt-on arch flares and a snorkel.
+  - **Running gear:** a 4-inch long-travel lift (about 11 cm more ground clearance) on 33-inch all-terrains and black 10-spoke rims.
+- **Underneath (both):** nothing hangs below the body.
 
 Each model's geometry is merged per material and shared by every car of that model. A car adds only its own paint, plates and lamp materials. Beyond about 38 m the interior, tread, brakes, chassis and running gear switch off.
 
@@ -154,9 +158,9 @@ Each model's geometry is merged per material and shared by every car of that mod
 
 ### The Jimny
 
-A Suzuki Jimny–style 4x4 (boxy body, round lamps, five-slot grille, flared arches, tailgate spare, drip rails, KL plates, right-hand drive with a turning steering wheel, working brake and reverse lights) on Rapier's ray-cast vehicle controller:
+A 5-door Jimny-style 4x4 (see Models above; right-hand drive with a turning steering wheel, working brake and reverse lights) on Rapier's ray-cast vehicle controller:
 
-- 1,090 kg chassis with an explicit inertia tensor and centre of mass; soft long-travel suspension (~1.45 Hz) with separate bump/rebound damping and roll damping.
+- 1,250 kg chassis with an explicit inertia tensor and centre of mass; soft long-travel suspension (~1.45 Hz) with separate bump/rebound damping and roll damping.
 - K15B-style torque curve → torque converter (slip + multiplication) → automatic 4-speed with kick-down → 4H/4L transfer case → all four wheels.
 - Traction control (drive force capped at each tyre's available grip from its live load) and stability control (cuts power when yaw rate or slip angle exceed what the steering asks for). Fronts saturate first, so the limit is safe understeer.
 - Speed-sensitive, rate-limited steering; brakes; handbrake (rear grip drops); engine braking; rolling resistance and aerodynamic drag.

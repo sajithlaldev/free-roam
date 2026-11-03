@@ -150,7 +150,7 @@ export interface CarSpawn {
   model?: 'jimny' | 'fortuner';
 }
 export const CAR_SPAWNS: CarSpawn[] = [
-  { x: 18, z: -7, yaw: Math.PI / 2, color: 0xe8c21b }, // kinetic yellow
+  { x: 18, z: -7, yaw: Math.PI / 2, color: 0xc5d313 }, // kinetic yellow (lime)
   { x: 18, z: -1, yaw: Math.PI / 2, color: 0x2f4a30 }, // jungle green
   { x: -124, z: -40, yaw: 0, color: 0xf2f2ee }, // white, at the beach
   { x: 16, z: 108, yaw: Math.PI, color: 0x1c2330 }, // bluish black, at the jetty

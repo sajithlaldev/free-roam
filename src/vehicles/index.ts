@@ -92,6 +92,7 @@ export function buildVisual(model: 'jimny' | 'fortuner', color: number, plate: s
   const dirt = { value: 0.1 };
   const own = new Map<string, THREE.Material>();
   own.set('paint', withDirt(paint(color), { uDirt: dirt }));
+  own.set('roof', withDirt(paint(0x101113), { uDirt: dirt })); // two-tone black roof (Jimny)
   for (const k of DIRTY_BODY) if (k !== 'paint') own.set(k, withDirt(sm[k] as THREE.MeshStandardMaterial, { uDirt: dirt }));
   for (const k of DIRTY_WHEEL) own.set(k, withDirt(sm[k] as THREE.MeshStandardMaterial, { uDirt: dirt }, true));
   const mat = (k: string): THREE.Material => own.get(k) ?? (k === 'plate' ? plateMat : k === 'brake' ? brakeMat : k === 'reverse' ? reverseMat : (sm[k] ?? sm.black));
