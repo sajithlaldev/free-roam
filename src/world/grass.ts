@@ -98,13 +98,13 @@ function clumpGeometry(): THREE.BufferGeometry {
   const base = new THREE.Color(0x2b4f18);
   const tip = new THREE.Color(0x7fae3e);
   const tip2 = new THREE.Color(0xa3b555);
-  for (let b = 0; b < 7; b++) {
+  for (let b = 0; b < 11; b++) {
     const a = rnd() * Math.PI * 2;
     const r = rnd() * 0.18;
     const bx = Math.cos(a) * r;
     const bz = Math.sin(a) * r;
     const h = 0.16 + rnd() * 0.2;
-    const w = 0.022 + rnd() * 0.014;
+    const w = 0.012 + rnd() * 0.009;
     const lean = new THREE.Vector2(Math.cos(a + 1), Math.sin(a + 1)).multiplyScalar(0.05 + rnd() * 0.07);
     const face = rnd() * Math.PI;
     const fx = Math.cos(face) * w;

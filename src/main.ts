@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { Announcer } from './announce';
-import { Car, JIMNY, type CarInput } from './car';
+import { Car, FORTUNER, JIMNY, type CarInput } from './car';
 import { AVATAR, CAR_HZ, CAR_PARKED_HEARTBEAT_MS, POS_HZ } from './config';
 import { Net } from './net';
+import { Pedestrians } from './npc';
+import { Traffic } from './traffic';
 import { CAM_LABEL, LocalPlayer, RemotePlayer } from './player';
 import { UI, type PlayerRow } from './ui';
 import { EngineSound, Voice, gainAt } from './voice';
@@ -20,9 +22,12 @@ const world = await World.create(canvas);
 ui.setMapBackground(world.minimap(180));
 
 const cars = CAR_SPAWNS.map((s, i) => {
-  const y = world.terrain.heightAt(s.x, s.z) + JIMNY.wheelRadius + 0.03;
-  return new Car(i, world.physics, world.scene, s.x, y, s.z, s.yaw, s.color);
+  const spec = s.model === 'fortuner' ? FORTUNER : JIMNY;
+  const y = world.terrain.heightAt(s.x, s.z) + spec.wheelRadius + 0.03;
+  return new Car(i, world.physics, world.scene, s.x, y, s.z, s.yaw, s.color, spec);
 });
+const traffic = new Traffic(world);
+const pedestrians = new Pedestrians(world);
 ui.ready();
 
 const remotes = new Map<string, RemotePlayer>();
@@ -164,7 +169,7 @@ function carNearby(): { car: Car; seat: number } | null {
   let best: { car: Car; seat: number; d: number } | null = null;
   for (const c of cars) {
     const d = c.position().distanceTo(player.pos);
-    if (d > 3.4 || (best && d > best.d)) continue;
+    if (d > c.spec.exitX + 2.2 || (best && d > best.d)) continue;
     const local = player.pos.clone().sub(c.position()).applyQuaternion(c.quaternion().invert());
     const front = local.z > -0.5;
     const right = local.x < 0;
@@ -177,6 +182,7 @@ function carNearby(): { car: Car; seat: number } | null {
 
 function chairNearby(): number {
   const taken = occupiedSeats();
+  registry.reservedSeats.forEach((id) => taken.add(id));
   let best = -1;
   let bd = 1.1;
   for (const s of registry.seats) {
@@ -238,7 +244,7 @@ function frame(now: number) {
       const c = carNearby();
       const chair = c ? -1 : chairNearby();
       if (c) {
-        hint = c.seat === 0 ? 'E drive the Jimny' : 'E ride as a passenger';
+        hint = c.seat === 0 ? `E drive the ${c.car.spec.name}` : `E ride in the ${c.car.spec.name}`;
         if (pressE) enterCar(c.car, c.seat);
       } else if (chair >= 0) {
         hint = 'E sit down';
@@ -264,6 +270,9 @@ function frame(now: number) {
 
   // ── per-frame updates ──
   player.update(dt);
+  const obstacles = [player.avatar.group.position, ...cars.map((c) => c.visual.root.position), ...[...remotes.values()].map((r) => r.avatar.group.position)];
+  traffic.update(dt, obstacles, voice);
+  pedestrians.update(dt, world.camera.position);
   for (const c of cars) c.update(now, dt);
   for (const r of remotes.values()) {
     r.update(now, dt, cars);
@@ -279,7 +288,7 @@ function frame(now: number) {
     for (const c of cars) {
       const running = !!c.seats[0] || (c.simulating && !!driving);
       let e = engines.get(c.id);
-      if (!e && running) engines.set(c.id, (e = new EngineSound(voice)));
+      if (!e && running) engines.set(c.id, (e = new EngineSound(voice, c.spec.diesel)));
       e?.update(c.position(), running, c.state.rpm, c.state.throttle, c.state.speed);
     }
   }
@@ -327,6 +336,7 @@ function frame(now: number) {
     ui.drawMap(WORLD_HALF, { x: g.x, z: g.z, yaw: player.car ? Math.atan2(...(() => { const f = new THREE.Vector3(0, 0, 1).applyQuaternion(player.car!.car.quaternion()); return [f.x, f.z] as [number, number]; })()) : player.yaw }, [
       ...[...remotes.values()].map((r) => ({ x: r.avatar.group.position.x, z: r.avatar.group.position.z })),
       ...cars.map((c) => ({ x: c.position().x, z: c.position().z, car: true })),
+      ...traffic.positions().map((p) => ({ x: p.x, z: p.z, car: true })),
     ]);
   }
 

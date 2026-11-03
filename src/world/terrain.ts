@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Simplex2, clamp, lerp, smoothstep } from './noise';
+import { terrainMaterial } from './terrainMaterial';
 import {
-  BUILDINGS, CANALS, HEADLAND, LAKE, MAIDAN, PADDY, PADDY_Y, ROADS, ROAD_WIDTH, SUMMIT, TEMPLE,
+  BUILDINGS, CANALS, HEADLAND, LAKE, MAIDAN, OFFROAD, OFFROAD_CREEK, OFFROAD_MOUNDS, OFFROAD_PITS, OFFROAD_TRACK, PADDY, PADDY_Y, ROADS, ROAD_WIDTH, SUMMIT, TEMPLE,
   TEMPLE_POND, WATER_Y, WORLD_HALF, coastX, hillMask, inRect, rect, type Rect, type V2,
 } from './layout';
 
-const N = 240; // cells per side
-const CELL = (WORLD_HALF * 2) / N; // 2 m
+const N = 480; // cells per side
+const CELL = (WORLD_HALF * 2) / N; // 1 m
 
 const noise = new Simplex2(20251103);
 
@@ -110,7 +111,40 @@ function natural(x: number, z: number): number {
     const k = smoothstep(1.4, 0.2, hd);
     h = Math.max(h, k * HEADLAND.h + k * 1.6 * noise.ridged(x / 7, z / 7, 3) - 2.5 * (1 - k));
   }
+
+  // Off-road park: rough ground, steep mounds, mud pits, a rutted twin-track trail.
+  h += offroadRelief(x, z);
+
+  // Fine relief on open ground (tussocks, hollows); roads and pads level it out later.
+  h += 0.05 * noise.noise(x / 1.3, z / 1.3) + 0.022 * noise.noise(x / 0.55, z / 0.55);
   return h;
+}
+
+export function offroadRelief(x: number, z: number): number {
+  const od = distToRect(OFFROAD, x, z);
+  if (od > 14) return 0;
+  const k = 1 - smoothstep(0, 14, od);
+  let r = 0.6 * noise.fbm(x / 9 + 11, z / 9 - 4, 3) + 0.22 * noise.noise(x / 2.6, z / 2.6) + 0.09 * noise.noise(x / 1.1, z / 1.1);
+  for (const m of OFFROAD_MOUNDS) {
+    const dd = Math.hypot(x - m.x, z - m.z) / m.r;
+    if (dd < 1.35) r += m.h * smoothstep(1.35, 0.3, dd) + 0.4 * noise.ridged(x / 3, z / 3, 2) * smoothstep(1.35, 0.6, dd);
+  }
+  for (const p of OFFROAD_PITS) {
+    const dd = Math.hypot(x - p.x, z - p.z) / p.r;
+    if (dd < 1.1) r -= 1.0 * smoothstep(1.1, 0.35, dd);
+  }
+  const { d } = polyDist(OFFROAD_TRACK, x, z);
+  if (d < 4) {
+    const tw = 1 - smoothstep(2, 4, d);
+    r *= 1 - 0.55 * tw; // the track is packed smoother…
+    r -= 0.14 * Math.exp(-(((d - 0.85) / 0.22) ** 2)) * tw; // …with two wheel ruts
+  }
+  return r * k;
+}
+
+/** 0..1: on the off-road trail (for surfaces / vegetation). */
+export function onTrail(x: number, z: number): number {
+  return 1 - smoothstep(1.8, 3.2, polyDist(OFFROAD_TRACK, x, z).d);
 }
 
 /** Natural + paddy fields + flat town pads (no roads, no water yet). */
@@ -205,6 +239,10 @@ export interface Terrain {
   cell: number;
   heights: Float32Array; // (N+1)² row-major: [iz * (N+1) + ix]
   colors: Float32Array;
+  /** Per-vertex surface weights (grass, soil, sand, rock) + mud, and a colour tint. */
+  splat: Float32Array;
+  mud: Float32Array;
+  tint: Float32Array;
   roads: RoadProfile[];
   heightAt(x: number, z: number): number;
   normalAt(x: number, z: number, out?: THREE.Vector3): THREE.Vector3;
@@ -237,6 +275,10 @@ function finalHeight(x: number, z: number, roads: RoadProfile[]): { h: number; r
     if (d < c.width / 2 + 4) h = lerp(-2.3, h, smoothstep(c.width / 2 - 2.5, c.width / 2 + 3, d));
   }
   if (inRect(TEMPLE_POND, x, z)) h = -1.8;
+  {
+    const { d } = polyDist(OFFROAD_CREEK, x, z);
+    if (d < 8) h = lerp(-0.45 + 0.1 * noise.noise(x / 2, z / 2), h, smoothstep(2.2, 8, d)); // shallow ford
+  }
   return { h, road: roadD };
 }
 
@@ -294,7 +336,11 @@ export function getTerrain(): Terrain {
   }
 
   const colors = terrainColors(heights, roadDistGrid, V);
+  const { splat, mud, tint } = terrainSplat(heights, roadDistGrid, V);
   cached = {
+    splat,
+    mud,
+    tint,
     N,
     cell: CELL,
     heights,
@@ -370,54 +416,180 @@ function terrainColors(heights: Float32Array, roadD: Float32Array, V: number): F
   return out;
 }
 
-// ── mesh + collider ───────────────────────────────────────────────────────────
-
-export function buildTerrainMesh(t: Terrain, detail: THREE.Texture): THREE.Mesh {
-  const V = t.N + 1;
-  const pos = new Float32Array(V * V * 3);
-  const uv = new Float32Array(V * V * 2);
+/**
+ * Surface weights for the PBR terrain shader, following the same zones as the colours:
+ * grass on open land, laterite soil on the maidan / road shoulders / steep banks, sand on
+ * the beach and in the temple court, rock on the headland and cliffs, mud at the water.
+ * The tint gently shifts each zone (lush lowland, dry patches, darker hills, bright paddy).
+ */
+function terrainSplat(heights: Float32Array, roadD: Float32Array, V: number) {
+  const splat = new Float32Array(V * V * 4);
+  const mud = new Float32Array(V * V);
+  const tint = new Float32Array(V * V * 3);
   for (let iz = 0; iz < V; iz++) {
     for (let ix = 0; ix < V; ix++) {
+      const x = -WORLD_HALF + ix * CELL;
+      const z = -WORLD_HALF + iz * CELL;
       const i = iz * V + ix;
-      pos[i * 3] = -WORLD_HALF + ix * t.cell;
-      pos[i * 3 + 1] = t.heights[i];
-      pos[i * 3 + 2] = -WORLD_HALF + iz * t.cell;
-      uv[i * 2] = ix / 4;
-      uv[i * 2 + 1] = iz / 4;
+      const h = heights[i];
+      const hx = heights[iz * V + Math.min(ix + 1, V - 1)] - heights[iz * V + Math.max(ix - 1, 0)];
+      const hz = heights[Math.min(iz + 1, V - 1) * V + ix] - heights[Math.max(iz - 1, 0) * V + ix];
+      const slope = Math.hypot(hx, hz) / (2 * CELL);
+      const n1 = noise.noise(x / 18, z / 18);
+      const n2 = noise.noise(x / 5, z / 5);
+      const n3 = noise.noise(x / 40 + 5, z / 40 - 3);
+      const coast = x - coastX(z);
+      let so = Math.max(0, n2 - 0.45) * 0.8; // bare earth patches in the grass
+      let sa = 0;
+      let ro = 0;
+      let mu = 0;
+      const lush = 0.5 + 0.5 * n1;
+      let tr = 0.92 + 0.18 * (1 - lush) + 0.06 * n3;
+      let tg = 1.0 + 0.06 * lush;
+      let tb = 0.9 + 0.05 * n3;
+      if (hillMask(x, z) > 0.3) {
+        tr *= 0.86;
+        tg *= 0.95;
+        tb *= 0.85;
+      }
+      if (slope > 0.55) so = Math.max(so, smoothstep(0.55, 1.0, slope));
+      if (slope > 1.1) ro = smoothstep(1.1, 1.6, slope);
+      if (PADDY.some((p) => inRect(p, x, z))) {
+        if (h > PADDY_Y + 0.12) so = Math.max(so, 0.5);
+        else {
+          mu = 0.35;
+          tr = 0.85;
+          tg = 1.28;
+          tb = 0.72;
+        }
+      }
+      if (inRect(MAIDAN, x, z, 1)) so = 1;
+      const rd = roadD[i];
+      if (rd < ROAD_WIDTH / 2 + 2.2) so = Math.max(so, smoothstep(ROAD_WIDTH / 2 + 2.2, ROAD_WIDTH / 2 + 0.6, rd));
+      if (inRect(rect(TEMPLE.x, TEMPLE.z, TEMPLE.size, TEMPLE.size), x, z)) sa = 0.8;
+      if (coast < 32 && h < 4.5) sa = Math.max(sa, smoothstep(32, 16, coast));
+      const hd = Math.hypot(x - HEADLAND.x, z - HEADLAND.z) / HEADLAND.r;
+      if (hd < 1.15 && h > 1.0) ro = Math.max(ro, smoothstep(1.15, 0.7, hd) * (0.6 + 0.4 * Math.max(0, n2 + 0.3)));
+      if (distToRect(OFFROAD, x, z) < 6) {
+        so = Math.max(so, 0.45 + 0.35 * Math.max(0, n2));
+        const tr2 = onTrail(x, z);
+        so = Math.max(so, tr2);
+        for (const pit of OFFROAD_PITS) if (Math.hypot(x - pit.x, z - pit.z) < pit.r * 1.1) mu = Math.max(mu, 0.9);
+        if (slope > 0.45) ro = Math.max(ro, smoothstep(0.45, 0.9, slope) * 0.8);
+      }
+      if (h < WATER_Y + 0.6 && coast > 10) mu = Math.max(mu, smoothstep(WATER_Y + 0.6, WATER_Y - 0.4, h));
+      if (h < WATER_Y - 0.15) {
+        if (coast < 0) sa = 1;
+        else mu = 1;
+      }
+      // Grass fills whatever the other surfaces don't take.
+      const g = 1 - Math.min(1, so + sa + ro + mu);
+      const sum = g + so + sa + ro + mu || 1;
+      splat.set([g / sum, so / sum, sa / sum, ro / sum], i * 4);
+      mud[i] = mu / sum;
+      tint.set([tr, tg, tb], i * 3);
     }
   }
-  const idx = new Uint32Array(t.N * t.N * 6);
-  let k = 0;
-  for (let iz = 0; iz < t.N; iz++) {
-    for (let ix = 0; ix < t.N; ix++) {
-      const a = iz * V + ix;
-      const b = a + 1;
-      const c = a + V;
-      const d = c + 1;
-      idx.set([a, c, b, b, c, d], k); // diagonal c–b, matching heightAt
-      k += 6;
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-  g.setAttribute('color', new THREE.BufferAttribute(t.colors, 3));
-  g.setIndex(new THREE.BufferAttribute(idx, 1));
-  g.computeVertexNormals();
-  const mesh = new THREE.Mesh(
-    g,
-    new THREE.MeshStandardMaterial({ vertexColors: true, map: detail, roughness: 0.96, metalness: 0 }),
-  );
-  mesh.receiveShadow = true;
-  return mesh;
+  return { splat, mud, tint };
 }
 
-export function buildTerrainCollider(physics: RAPIER.World, mesh: THREE.Mesh): RAPIER.Collider {
-  const g = mesh.geometry;
-  return physics.createCollider(
-    RAPIER.ColliderDesc.trimesh(
-      (g.getAttribute('position').array as Float32Array).slice(),
-      (g.getIndex()!.array as Uint32Array).slice(),
-    ).setFriction(0.9),
-  );
+// ── mesh + collider ───────────────────────────────────────────────────────────
+
+/** The terrain as 8×8 chunk meshes (so the GPU can skip chunks that are off screen). */
+export function buildTerrainMesh(t: Terrain): THREE.Group {
+  const V = t.N + 1;
+  const C = 8;
+  const cs = t.N / C; // cells per chunk side
+  const mat = terrainMaterial();
+  const group = new THREE.Group();
+  for (let cz = 0; cz < C; cz++)
+    for (let cx = 0; cx < C; cx++) {
+      const n = cs + 1;
+      const pos = new Float32Array(n * n * 3);
+      const col = new Float32Array(n * n * 3);
+      const spl = new Float32Array(n * n * 4);
+      const mud = new Float32Array(n * n);
+      for (let j = 0; j < n; j++)
+        for (let i = 0; i < n; i++) {
+          const ix = cx * cs + i;
+          const iz = cz * cs + j;
+          const src = iz * V + ix;
+          const k = j * n + i;
+          pos.set([-WORLD_HALF + ix * t.cell, t.heights[src], -WORLD_HALF + iz * t.cell], k * 3);
+          col.set(t.tint.subarray(src * 3, src * 3 + 3), k * 3);
+          spl.set(t.splat.subarray(src * 4, src * 4 + 4), k * 4);
+          mud[k] = t.mud[src];
+        }
+      const idx = new Uint32Array(cs * cs * 6);
+      let q = 0;
+      for (let j = 0; j < cs; j++)
+        for (let i = 0; i < cs; i++) {
+          const a0 = j * n + i;
+          const b0 = a0 + 1;
+          const c0 = a0 + n;
+          const d0 = c0 + 1;
+          idx.set([a0, c0, b0, b0, c0, d0], q); // diagonal c–b, matching heightAt
+          q += 6;
+        }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      g.setAttribute('splat', new THREE.BufferAttribute(spl, 4));
+      g.setAttribute('mud', new THREE.BufferAttribute(mud, 1));
+      g.setIndex(new THREE.BufferAttribute(idx, 1));
+      g.computeVertexNormals();
+      // Seam-free lighting: normals from the global height field, not just this chunk.
+      const nrm = g.getAttribute('normal') as THREE.BufferAttribute;
+      const v = new THREE.Vector3();
+      for (let k = 0; k < n * n; k++) {
+        t.normalAt(pos[k * 3], pos[k * 3 + 2], v);
+        nrm.setXYZ(k, v.x, v.y, v.z);
+      }
+      g.computeBoundingSphere();
+      const m = new THREE.Mesh(g, mat);
+      m.receiveShadow = true;
+      group.add(m);
+    }
+  return group;
+}
+
+/**
+ * Collision: a Rapier height field (far cheaper than a 460k-triangle mesh). Its row/column
+ * convention is checked with raycasts against heightAt; falls back to a triangle mesh.
+ */
+export function buildTerrainCollider(physics: RAPIER.World, t: Terrain): RAPIER.Collider {
+  const V = t.N + 1;
+  const size = t.N * t.cell;
+  const check = (c: RAPIER.Collider) => {
+    physics.step(); // update the query pipeline
+    let worst = 0;
+    for (let k = 0; k < 24; k++) {
+      const x = (((k * 7919) % 997) / 997 - 0.5) * size * 0.9;
+      const z = (((k * 104729) % 991) / 991 - 0.5) * size * 0.9;
+      const hit = physics.castRay(new RAPIER.Ray({ x, y: 200, z }, { x: 0, y: -1, z: 0 }), 400, true, undefined, undefined, undefined, undefined, (o) => o === c);
+      if (!hit) return Infinity;
+      worst = Math.max(worst, Math.abs(200 - hit.timeOfImpact - t.heightAt(x, z)));
+    }
+    return worst;
+  };
+  for (const transpose of [true, false]) {
+    const h = new Float32Array(V * V);
+    for (let iz = 0; iz < V; iz++) for (let ix = 0; ix < V; ix++) h[transpose ? ix * V + iz : iz * V + ix] = t.heights[iz * V + ix];
+    const c = physics.createCollider(RAPIER.ColliderDesc.heightfield(t.N, t.N, h, { x: size, y: 1, z: size }).setFriction(0.9));
+    const err = check(c);
+    if (err < 0.15) return c;
+    physics.removeCollider(c, false);
+  }
+  console.warn('heightfield orientation check failed; using a triangle mesh');
+  const pos = new Float32Array(V * V * 3);
+  for (let iz = 0; iz < V; iz++) for (let ix = 0; ix < V; ix++) pos.set([-WORLD_HALF + ix * t.cell, t.heights[iz * V + ix], -WORLD_HALF + iz * t.cell], (iz * V + ix) * 3);
+  const idx = new Uint32Array(t.N * t.N * 6);
+  let q = 0;
+  for (let iz = 0; iz < t.N; iz++)
+    for (let ix = 0; ix < t.N; ix++) {
+      const a0 = iz * V + ix;
+      idx.set([a0, a0 + V, a0 + 1, a0 + 1, a0 + V, a0 + V + 1], q);
+      q += 6;
+    }
+  return physics.createCollider(RAPIER.ColliderDesc.trimesh(pos, idx).setFriction(0.9));
 }

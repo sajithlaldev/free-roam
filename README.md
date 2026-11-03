@@ -12,7 +12,12 @@ Built with three.js, Rapier (physics) and LiveKit (voice + data). Everything in 
 | **Fort Kochi** (north-west) | Four Chinese fishing nets on wooden platforms, slowly dipping into the sea |
 | **Alappuzha backwaters** (south) | Lake and canals, three kettuvallam houseboats (the one at the jetty is walkable), paddy fields with bunds, coconut palms along every bank |
 | **Munnar** (north-east) | Rolling hills of contour tea hedges with silver oaks, a winding hill road up to a viewpoint pavilion |
+| **Off-road park** (north) | Rough 4×4 course: steep mounds with boulders, mud pits, a creek to ford, logs to crawl over, a rutted twin-track trail marked with white tyres |
 | **Town** (centre) | Padmanabhaswamy-style temple with a seven-tier gopuram, round sreekovil, flag mast, brass lamp tower and stepped temple pond; red-earth maidan with the PA mic; Kerala tiled-roof houses with verandahs; a chaya kada (tea shop); the **community hall** |
+
+Life: Jimnys and Fortuners drive the roads (left-hand traffic, U-turns at dead ends, braking for you), devotees circle the sreekovil, people stroll the maidan, roadside, jetty and beach, and others sit in the hall, at the tea shop and the bus stop. Traffic and pedestrians follow the shared clock, so everyone sees the same world.
+
+KSEB poles carry sagging power lines along every road; houses have laterite compound walls and gates; there are modern two-storey houses with black rooftop water tanks, parked autorickshaws and scooters, a KSRTC bus at its shelter, flex boards, milestones and flowering hibiscus, croton and bougainvillea.
 
 Roads connect everything (with bridges over the canals) and street lamps, direction signs and a minimap help you find your way. Water deeper than chest height is swimmable.
 
@@ -58,6 +63,12 @@ Production: `npm run build && npm start` (the token server also serves `dist/`).
 | V | camera: chase → far chase → close chase → driver's-eye cockpit |
 | E | get out |
 
+## Materials and ground
+
+Every surface uses procedural PBR materials (albedo + normal map from a real height field + roughness), built at startup (`src/world/pbr.ts`): grass turf, laterite soil with stones and drying cracks, wind-rippled sand, weathered rock, wet mud, asphalt (aggregate, cracks, patches, worn paint, dusty shoulders), monsoon-stained plaster, Mangalore roof tiles with lichen, porous laterite blocks, carved temple stone, teak, palm bark, concrete.
+
+The terrain is a 1 m grid (480 × 480 cells, drawn as 64 culled chunks, collided as a Rapier height field) with fine relief on open ground. Its shader blends five surfaces per pixel by vertex weights *and* each surface's height map (sand settles between grass, rock pushes through soil), samples each twice at different scales/rotations to hide tiling, and applies the normal maps in world space.
+
 ## Graphics
 
 Three presets (G; remembered per browser):
@@ -82,7 +93,21 @@ Always on: sky with image-based lighting, a drifting procedural cloud layer, win
   One person per mic. The talker's single audio track is fanned out client-side to that PA's speakers (no extra bandwidth) and their body voice is muted so it isn't doubled. "On" is re-sent every 1.5 s for late joiners and times out after 4.5 s of silence.
 - **Engines:** each running Jimny has a synthesised, spatialised 4-cylinder engine (firing frequency from the live RPM, load-dependent filtering) plus road noise.
 
-## The Jimny (`src/car.ts`)
+## Vehicles (`src/car.ts`)
+
+Two models, both data-driven (`VehicleSpec`) on Rapier's ray-cast vehicle controller:
+
+| | Jimny | Fortuner (2-inch lift, 285/70 R17 A/T) |
+| --- | --- | --- |
+| Mass | 1,090 kg | 2,150 kg |
+| Engine | 1.5 petrol, 130 Nm | 2.8 diesel, 500 Nm @ 1,600–2,800 |
+| Gearbox | 4-speed auto + 4H/4L | 6-speed auto + 4H/4L |
+| 0–100 km/h (measured) | 11.8 s | 11.3 s |
+| 100–0 km/h | 36.6 m | 40.1 m |
+
+**Handling is tuned to feel like GTA IV**: heavy and momentum-driven; soft, under-damped springs; a sprung-body model so the body visibly leans out of corners, dives under braking, squats under power and wobbles after quick direction changes; no stability control, lighter traction control and a slightly loose rear so slides are easy to start and catch, with progressive understeer at the limit.
+
+### The Jimny
 
 A Suzuki Jimny–style 4x4 (boxy body, round lamps, five-slot grille, flared arches, tailgate spare, drip rails, KL plates, right-hand drive with a turning steering wheel, working brake and reverse lights) on Rapier's ray-cast vehicle controller:
 

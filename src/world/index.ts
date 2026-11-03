@@ -60,19 +60,9 @@ export class World {
     this.buildSkyAndLight();
     const tex = textures();
     tex.detail.repeat.set(1, 1);
-    const ground = buildTerrainMesh(this.terrain, tex.detail);
-    const gm = ground.material as THREE.MeshStandardMaterial;
-    gm.bumpMap = tex.detail;
-    gm.bumpScale = 1.6;
-    gm.onBeforeCompile = (sh) => {
-      // Macro variation (a second, much larger sample) breaks up visible tiling.
-      sh.fragmentShader = sh.fragmentShader.replace(
-        '#include <map_fragment>',
-        '#include <map_fragment>\n\tdiffuseColor.rgb *= mix(0.8, 1.14, texture2D(map, vMapUv * 0.071 + vec2(0.37, 0.11)).r);',
-      );
-    };
+    const ground = buildTerrainMesh(this.terrain);
     this.scene.add(ground);
-    buildTerrainCollider(this.physics, ground);
+    buildTerrainCollider(this.physics, this.terrain);
     this.buildDistantLand();
     this.buildWater();
     this.buildBounds();

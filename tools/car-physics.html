@@ -1,7 +1,7 @@
 <!doctype html><html><body><script type="module">
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { Car, JIMNY } from '/src/car.ts';
+import { Car, FORTUNER, JIMNY } from '/src/car.ts';
 await RAPIER.init();
 function makeWorld(ramp) {
   const physics = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
@@ -16,7 +16,7 @@ function makeWorld(ramp) {
 }
 function run(name, script, opts = {}) {
   const physics = makeWorld(opts.ramp);
-  const car = new Car(0, physics, new THREE.Scene(), 0, JIMNY.wheelRadius + 0.3, 0, 0, 0xffcc00);
+  const car = new Car(0, physics, new THREE.Scene(), 0, SPEC.wheelRadius + 0.3, 0, 0, 0xffcc00, SPEC);
   car.takeControl();
   if (opts.low) car.state.low = true;
   const log = { name };
@@ -28,15 +28,20 @@ function run(name, script, opts = {}) {
     physics.step();
     t += dt;
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(car.quaternion());
+    const e = new THREE.Euler().setFromQuaternion(car.quaternion(), 'YXZ');
+    log.maxRollV = Math.max(log.maxRollV ?? 0, Math.abs(e.z * 57.3));
+    log.maxPitch = +Math.max(log.maxPitch ?? 0, Math.abs(e.x * 57.3)).toFixed(1);
     if (up.y < 0.3) { log.rolledOver = +t.toFixed(2); break; }
   }
   const p = car.position();
+  log.maxRoll = +(log.maxRollV ?? 0).toFixed(1); delete log.maxRollV;
   log.end = { t: +t.toFixed(2), x: +p.x.toFixed(1), y: +p.y.toFixed(2), z: +p.z.toFixed(1), kmh: car.hud().kmh, gear: car.hud().gear };
   return log;
 }
+let SPEC = JIMNY;
 const kmh = (car) => car.state.speed * 3.6;
 const res = [];
-for (const ar of [1]) {
+for (const SPEC_ of [JIMNY, FORTUNER]) { SPEC = SPEC_; res.push({ name: '=== ' + SPEC.name });
 res.push(run('settle', (t, car, log) => { if (t > 3) { log.rideY = +car.position().y.toFixed(3); log.susp = [0,1,2,3].map(i => +car.ctrl.wheelSuspensionLength(i).toFixed(3)); return 'stop'; } return { throttle: 0, brake: 0, steer: 0, handbrake: false }; }));
 res.push(run('accel', (t, car, log) => {
   const v = kmh(car);

@@ -185,7 +185,7 @@ export class EngineSound {
   private pan: PannerNode;
   private on = false;
 
-  constructor(private v: Voice) {
+  constructor(private v: Voice, private diesel = false) {
     const ctx = v.ctx;
     this.pan = v.makePanner(4, 80);
     this.gain = ctx.createGain();
@@ -230,8 +230,9 @@ export class EngineSound {
     const fire = (rpm / 60) * 2;
     this.oscA.frequency.setTargetAtTime(fire, t, 0.03);
     this.oscB.frequency.setTargetAtTime(fire * 0.5, t, 0.03);
-    this.filter.frequency.setTargetAtTime(220 + rpm * 0.22 + throttle * 900, t, 0.05);
-    this.gain.gain.setTargetAtTime(running ? 0.05 + throttle * 0.09 + rpm / 90000 : 0, t, 0.08);
+    // Diesel: lower, grittier clatter; petrol: smoother and revvier.
+    this.filter.frequency.setTargetAtTime((this.diesel ? 150 : 220) + rpm * (this.diesel ? 0.32 : 0.22) + throttle * (this.diesel ? 600 : 900), t, 0.05);
+    this.gain.gain.setTargetAtTime(running ? (this.diesel ? 0.07 : 0.05) + throttle * 0.09 + rpm / 90000 : 0, t, 0.08);
     this.roadGain.gain.setTargetAtTime(running || speed > 0.5 ? Math.min(0.12, Math.abs(speed) * 0.006) : 0, t, 0.1);
   }
 

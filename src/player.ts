@@ -246,7 +246,7 @@ export class RemotePlayer {
     if (car) {
       const seat = s.carSeat & 3;
       car.seatWorld(seat, g.position);
-      car.quaternion(g.quaternion);
+      car.cabinQuaternion(g.quaternion);
       sit = seat === 0 ? 2 : 3;
       steer = car.state.steer;
       this.speed = 0;
@@ -462,7 +462,7 @@ export class LocalPlayer {
     const q = car.quaternion();
     const side = JIMNY_SIDE(seat);
     const tryAt = (sx: number) => {
-      const p = new THREE.Vector3(sx * 1.45, 0.3, seat < 2 ? -0.1 : -0.9).applyQuaternion(q).add(car.position());
+      const p = new THREE.Vector3(sx * car.spec.exitX, 0.3, car.spec.seats[seat].z).applyQuaternion(q).add(car.position());
       const g = this.world.terrain.heightAt(p.x, p.z);
       const y = Math.max(g, p.y - 0.6);
       const hit = this.world.physics.intersectionWithShape({ x: p.x, y: y + 0.85, z: p.z }, { x: 0, y: 0, z: 0, w: 1 }, new RAPIER.Capsule(0.5, 0.33), undefined, undefined, this.collider);
@@ -591,7 +591,7 @@ export class LocalPlayer {
     if (this.car) {
       const { car, seat } = this.car;
       car.seatWorld(seat, g.position);
-      car.quaternion(g.quaternion);
+      car.cabinQuaternion(g.quaternion);
       sit = seat === 0 ? 2 : 3;
       steer = car.state.steer;
     } else if (this.seat >= 0) {
@@ -641,7 +641,7 @@ export class LocalPlayer {
       if (idle) this.camYaw = approachAngle(this.camYaw, first ? carYaw : this.carCamYaw, dt * (first ? 4 : 2.5));
       if (first) {
         // Driver's eyes, looking out of the windscreen; the view tilts with the car.
-        const eye = car.seatWorld(0, this.tmp).add(new THREE.Vector3(0, 0.74, 0.03).applyQuaternion(cq));
+        const eye = car.seatWorld(0, this.tmp).add(new THREE.Vector3(0, car.spec.eye, 0.03).applyQuaternion(cq));
         cam.position.copy(eye);
         let yawOff = this.camYaw - carYaw;
         yawOff = Math.atan2(Math.sin(yawOff), Math.cos(yawOff));
@@ -649,8 +649,9 @@ export class LocalPlayer {
         cam.quaternion.copy(cq).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, Math.PI + yawOff, 0, 'YXZ')));
         return;
       }
-      const dist = mode === 'far' ? 11 : mode === 'shoulder' ? 4.2 : Math.max(5.5, this.camDist + 2);
-      const pivot = car.position(this.tmp).add(new THREE.Vector3(0, mode === 'far' ? 2.0 : 1.35, 0));
+      const base = car.spec.camDist;
+      const dist = mode === 'far' ? base * 1.8 : mode === 'shoulder' ? base * 0.7 : Math.max(base, this.camDist + 2);
+      const pivot = car.position(this.tmp).add(new THREE.Vector3(0, (mode === 'far' ? 2.0 : 1.35) + car.spec.eye - 0.74, 0));
       const elev = mode === 'far' ? Math.max(0.3, Math.min(this.elev, 0.8)) : Math.max(0.1, Math.min(this.elev, 0.6));
       this.camTarget.copy(pivot);
       this.placeOrbit(viewDir(this.camYaw, elev), dist, car.body);

@@ -8,37 +8,37 @@ import {
 import { mulberry32 } from './noise';
 import { addPA, addRoom, addSeat, registry } from './registry';
 import { polyAt, type Terrain } from './terrain';
+import { pbr, type Surface } from './pbr';
+import { buildProps } from './props';
 import { signTexture, textures } from './textures';
 
 const std = (o: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, ...o });
 
 export function registerMaterials(b: Batcher) {
   const t = textures();
-  const rep = (tex: THREE.Texture) => {
-    const c = tex.clone();
-    c.needsUpdate = true;
-    return c;
-  };
-  b.material('plaster', () => std({ map: t.plaster, color: 0xffffff, roughness: 0.92 }))
-    .material('laterite', () => std({ map: t.laterite, roughness: 0.95 }))
-    .material('roof', () => std({ map: t.roofTiles, roughness: 0.75, side: THREE.DoubleSide }))
-    .material('wood', () => std({ map: t.wood, roughness: 0.7 }))
-    .material('woodLight', () => std({ map: rep(t.wood), color: 0xd2a06a, roughness: 0.7 }))
-    .material('floor', () => std({ map: t.redFloor, roughness: 0.32, metalness: 0.05 }))
-    .material('stone', () => std({ color: 0xb4ab9b, map: rep(t.detail), roughness: 0.9 }))
-    .material('gopuram', () => std({ color: 0xd8c39b, map: rep(t.detail), roughness: 0.88 }))
-    .material('gopuramDark', () => std({ color: 0x8f7b5c, roughness: 0.9 }))
+  const P = pbr();
+  const pb = (sf: Surface, o: THREE.MeshStandardMaterialParameters = {}) => std({ ...sf, roughness: 1, ...o });
+  b.material('plaster', () => pb(P.plaster, { color: 0xffffff }))
+    .material('laterite', () => pb(P.laterite))
+    .material('roof', () => pb(P.roof, { side: THREE.DoubleSide, normalScale: new THREE.Vector2(1.2, 1.2) }))
+    .material('wood', () => pb(P.wood))
+    .material('woodLight', () => pb(P.wood, { color: 0xe8b47a }))
+    .material('floor', () => std({ map: t.redFloor, roughness: 0.28, metalness: 0.05 }))
+    .material('stone', () => pb(P.concrete, { color: 0xd8cfbf }))
+    .material('gopuram', () => pb(P.carved, { color: 0xe6d6b8 }))
+    .material('gopuramDark', () => pb(P.carved, { color: 0x8a7a62 }))
     .material('gold', () => std({ color: 0xd8a93b, metalness: 1, roughness: 0.28 }))
     .material('copper', () => std({ color: 0x8c5636, metalness: 0.75, roughness: 0.45 }))
     .material('brass', () => std({ color: 0xc09a3a, metalness: 1, roughness: 0.35 }))
     .material('white', () => std({ color: 0xf3f2ec, roughness: 0.6 }))
     .material('red', () => std({ color: 0xb02a1f, roughness: 0.6 }))
     .material('black', () => std({ color: 0x1d1d1f, roughness: 0.6 }))
-    .material('concrete', () => std({ color: 0xbab6ad, map: rep(t.detail), roughness: 0.95 }))
+    .material('concrete', () => pb(P.concrete))
     .material('metal', () => std({ color: 0x7f868e, metalness: 0.7, roughness: 0.4 }))
     .material('plasticBlue', () => std({ color: 0x1e5bbf, roughness: 0.45 }))
     .material('plasticRed', () => std({ color: 0xc0262b, roughness: 0.45 }))
-    .material('road', () => std({ map: t.road, roughness: 0.9 }), false)
+    .material('road', () => pb(P.road), false)
+    .material('windowGlass', () => std({ color: 0x1b2a33, metalness: 0.85, roughness: 0.07 }), false)
     .material('lamp', () => new THREE.MeshBasicMaterial({ color: 0xfff6dd }), false)
     .material('thatch', () => std({ map: t.thatch, roughness: 0.95, side: THREE.DoubleSide }))
     .material('fabric', () => std({ color: 0x9b2335, roughness: 0.95 }))
@@ -148,7 +148,7 @@ function walls(b: Batcher, f: Frame, key: string, W: number, D: number, h: numbe
     const fx = Math.sin(yaw) * 0.02;
     const fz = Math.cos(yaw) * 0.02;
     b.box('wood', x + fx, f.y + 1.55, z + fz, 1.0, 1.15, 0.06, { ry: yaw });
-    b.box('black', x + fx * 2, f.y + 1.55, z + fz * 2, 0.82, 0.97, 0.04, { ry: yaw });
+    b.box('windowGlass', x + fx * 2, f.y + 1.55, z + fz * 2, 0.82, 0.97, 0.04, { ry: yaw });
     for (let k = -1; k <= 1; k++) {
       const ox = Math.cos(yaw) * k * 0.22;
       const oz = -Math.sin(yaw) * k * 0.22;
@@ -255,6 +255,7 @@ function house(b: Batcher, t: Terrain, def: BuildingDef) {
   const [ix0, iz0] = core.p(-W / 2 + 0.24, -coreD / 2 + 0.24);
   const [ix1, iz1] = core.p(W / 2 - 0.24, coreD / 2 - 0.24);
   addRoom({ name: def.id, r: { x0: Math.min(ix0, ix1), z0: Math.min(iz0, iz1), x1: Math.max(ix0, ix1), z1: Math.max(iz0, iz1) }, y0: fl.y, y1: fl.y + h, soundproof: false });
+  compoundWall(b, t, def, W, D, yaw, 0);
 }
 
 function meetingHall(b: Batcher, scene: THREE.Object3D, t: Terrain, def: BuildingDef) {
@@ -743,7 +744,7 @@ function roadsAndBridges(b: Batcher, t: Terrain) {
       const nz = p.tx;
       const y = r.h[i] + 0.0;
       pos.push(p.x + (nx * ROAD_WIDTH) / 2, y, p.z + (nz * ROAD_WIDTH) / 2, p.x - (nx * ROAD_WIDTH) / 2, y, p.z - (nz * ROAD_WIDTH) / 2);
-      uv.push(0, s / 12, 1, s / 12);
+      uv.push(0, s / ROAD_WIDTH, 1, s / ROAD_WIDTH);
       if (i < n - 1) {
         const a = i * 2;
         idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
@@ -787,22 +788,6 @@ function roadsAndBridges(b: Batcher, t: Terrain) {
       }
     }
 
-    // Street lamps (concrete KSEB poles) every ~32 m.
-    for (let s = 10, k = 0; s < r.length - 5; s += 32, k++) {
-      if (r.bridges.some(([a, c]) => s > a - 4 && s < c + 4)) continue;
-      const p = polyAt(r.pts, s);
-      const side = k % 2 ? 1 : -1;
-      const ox = -p.tz * side * (ROAD_WIDTH / 2 + 1.3);
-      const oz = p.tx * side * (ROAD_WIDTH / 2 + 1.3);
-      const x = p.x + ox;
-      const z = p.z + oz;
-      const y = t.heightAt(x, z);
-      b.box('concrete', x, y + 3.6, z, 0.2, 7.2, 0.2, { collide: true });
-      const ax = -ox / (ROAD_WIDTH / 2 + 1.3);
-      const az = -oz / (ROAD_WIDTH / 2 + 1.3);
-      b.box('metal', x + ax * 0.8, y + 7.0, z + az * 0.8, 0.06, 0.06, 1.6, { ry: Math.atan2(ax, az) });
-      b.box('lamp', x + ax * 1.5, y + 6.9, z + az * 1.5, 0.35, 0.1, 0.35);
-    }
   }
 
   // Jetty into the lake.
@@ -881,12 +866,110 @@ function scatterSpeakers(b: Batcher, t: Terrain, pa: number, count: number) {
   }
 }
 
+/** Modern Kerala house: two storeys, flat roof with parapet, sunshades, balcony, black rooftop tank. */
+function modernHouse(b: Batcher, t: Terrain, def: BuildingDef) {
+  const yaw = sideYaw(def.door);
+  const W = def.door === 'e' || def.door === 'w' ? def.d : def.w;
+  const D = def.door === 'e' || def.door === 'w' ? def.w : def.d;
+  const g = t.heightAt(def.x, def.z);
+  const plinth = 0.45;
+  const h1 = 3.1;
+  const h2 = 3.0;
+  const key = `plaster-${def.id}`;
+  b.material(key, () => std({ ...pbr().plaster, roughness: 1, color: def.wall }));
+  const f = new Frame(def.x, g, def.z, yaw);
+  const fl = new Frame(def.x, g + plinth, def.z, yaw);
+  const up = new Frame(def.x, g + plinth + h1 + 0.2, def.z, yaw);
+  f.box(b, 'concrete', 0, plinth / 2, 0, W, plinth, D, { collide: true, uv: 1.5 });
+  f.box(b, 'concrete', 0, 0.12, D / 2 + 0.45, 2.0, 0.24, 0.9, { collide: true });
+  fl.box(b, 'stone', 0, 0.01, 0, W - 0.1, 0.02, D - 0.1, { uv: 0.6 }); // vitrified tiles
+  walls(b, fl, key, W, D, h1, 0.23, { x: -W / 4, w: 1.1, h: 2.15 });
+  fl.box(b, 'wood', -W / 4 + 0.53, 1.07, D / 2 - 0.62, 0.05, 2.1, 1.0); // open door
+  // Floor slab with a continuous sunshade (chajja) all round, and the upper storey.
+  fl.box(b, 'concrete', 0, h1 + 0.1, 0, W + 0.8, 0.2, D + 0.8, { collide: true, uv: 2 });
+  fl.box(b, 'concrete', 0, 2.42, 0, W + 0.5, 0.07, D + 0.5); // window sunshade band
+  walls(b, up, key, W, D, h2, 0.23, { x: W / 4, w: 1.0, h: 2.1 });
+  up.box(b, 'concrete', 0, 2.36, 0, W + 0.5, 0.07, D + 0.5);
+  // Front balcony with a steel railing.
+  up.box(b, 'concrete', W / 4, -0.05, D / 2 + 0.7, 3.2, 0.14, 1.4, { collide: true });
+  for (let k = 0; k <= 12; k++) up.box(b, 'metal', W / 4 - 1.55 + k * 0.258, 0.5, D / 2 + 1.36, 0.025, 0.9, 0.025);
+  up.box(b, 'metal', W / 4, 0.96, D / 2 + 1.36, 3.2, 0.04, 0.05);
+  // Flat roof + parapet, staircase room with a little tiled roof, black water tank.
+  const ry = h2 + 0.1;
+  up.box(b, 'concrete', 0, ry, 0, W + 0.3, 0.2, D + 0.3, { uv: 2 });
+  for (const [lx, lz, sx, sz] of [[0, -D / 2 - 0.05, W + 0.3, 0.15], [0, D / 2 + 0.05, W + 0.3, 0.15], [-W / 2 - 0.05, 0, 0.15, D + 0.3], [W / 2 + 0.05, 0, 0.15, D + 0.3]] as const)
+    up.box(b, key, lx, ry + 0.55, lz, sx, 0.9, sz);
+  up.box(b, key, -W / 2 + 1.8, ry + 1.25, -D / 2 + 1.8, 3, 2.3, 3);
+  up.geo(b, 'roof', hipRoof(3, 3, 1.1, 0.35), -W / 2 + 1.8, ry + 2.4, -D / 2 + 1.8);
+  up.box(b, 'metal', W / 2 - 1.6, ry + 0.45, -D / 2 + 1.5, 1.3, 0.7, 1.3);
+  up.cyl(b, 'black', W / 2 - 1.6, ry + 1.4, -D / 2 + 1.5, 0.58, 0.62, 1.3, { seg: 18 });
+  for (const yy of [1.0, 1.4, 1.8]) up.cyl(b, 'black', W / 2 - 1.6, ry + yy, -D / 2 + 1.5, 0.64, 0.64, 0.05, { seg: 18 });
+  up.cyl(b, 'black', W / 2 - 1.6, ry + 2.12, -D / 2 + 1.5, 0.2, 0.25, 0.14, { seg: 12 });
+  // Car porch on two pillars.
+  fl.box(b, 'concrete', W / 4 + 1.0, h1 - 0.2, D / 2 + 2.3, 4.0, 0.18, 3.6, { collide: true });
+  for (const ox of [-0.9, 2.9]) fl.cyl(b, key, W / 4 + ox, (h1 - 0.3) / 2, D / 2 + 3.8, 0.16, 0.16, h1 - 0.3, { seg: 12, collide: true });
+  // Interior: sofa, TV unit, dining table.
+  fl.box(b, 'fabric', -W / 2 + 1.2, 0.4, 0, 0.9, 0.8, 2.2, { collide: true });
+  fl.box(b, 'wood', W / 2 - 0.5, 0.45, -0.5, 0.5, 0.9, 1.8, { collide: true });
+  fl.box(b, 'black', W / 2 - 0.3, 1.3, -0.5, 0.06, 0.7, 1.2);
+  fl.box(b, 'woodLight', 0.5, 0.76, -D / 2 + 1.6, 1.6, 0.05, 0.9, { collide: true });
+  const [ix0, iz0] = fl.p(-W / 2 + 0.23, -D / 2 + 0.23);
+  const [ix1, iz1] = fl.p(W / 2 - 0.23, D / 2 - 0.23);
+  addRoom({ name: def.id, r: { x0: Math.min(ix0, ix1), z0: Math.min(iz0, iz1), x1: Math.max(ix0, ix1), z1: Math.max(iz0, iz1) }, y0: fl.y, y1: fl.y + h1, soundproof: false });
+  compoundWall(b, t, def, W, D, yaw, def.kind === 'modern' ? W / 4 + 1.0 : 0);
+}
+
+/**
+ * Compound wall round a house plot: laterite base with a plaster cap, built in short runs
+ * that follow the ground; a gateway with pillars and open iron gates lines up with `gateX`.
+ */
+function compoundWall(b: Batcher, t: Terrain, def: BuildingDef, W: number, D: number, yaw: number, gateX: number) {
+  const front = 5.2;
+  const side = 2.6;
+  const x0 = -W / 2 - side;
+  const x1 = W / 2 + side;
+  const z0 = -D / 2 - side;
+  const z1 = D / 2 + front;
+  const gate = 3.2;
+  const H = 1.3;
+  const fr = new Frame(def.x, 0, def.z, yaw);
+  const run = (ax: number, az: number, bx: number, bz: number) => {
+    const len = Math.hypot(bx - ax, bz - az);
+    const n = Math.max(1, Math.round(len / 2.5));
+    for (let k = 0; k < n; k++) {
+      const sx = ax + ((bx - ax) * (k + 0.5)) / n;
+      const sz = az + ((bz - az) * (k + 0.5)) / n;
+      const [wx, wz] = fr.p(sx, sz);
+      const gy = t.heightAt(wx, wz);
+      const ry = Math.atan2(bx - ax, bz - az);
+      const seg = len / n + 0.02;
+      b.box('laterite', wx, gy + H / 2 - 0.1, wz, 0.24, H + 0.2, seg, { ry: yaw + ry, collide: true, uv: 1.5 });
+      b.box('white', wx, gy + H + 0.13, wz, 0.32, 0.08, seg + 0.02, { ry: yaw + ry });
+    }
+  };
+  run(x0, z0, x1, z0);
+  run(x0, z0, x0, z1);
+  run(x1, z0, x1, z1);
+  run(x0, z1, gateX - gate / 2, z1);
+  run(gateX + gate / 2, z1, x1, z1);
+  for (const s of [-1, 1]) {
+    const [px, pz] = fr.p(gateX + (s * gate) / 2, z1);
+    const gy = t.heightAt(px, pz);
+    b.box('plaster', px, gy + 0.85, pz, 0.48, 1.7, 0.48, { ry: yaw, collide: true });
+    b.box('roof', px, gy + 1.78, pz, 0.62, 0.14, 0.62, { ry: yaw });
+    // open iron gate leaf, swung inwards
+    const [lx, lz] = fr.p(gateX + s * (gate / 2 - 0.05), z1 - 0.8);
+    b.box('metal', lx, gy + 0.7, lz, 0.04, 1.2, 1.5, { ry: yaw });
+  }
+}
+
 export function buildArchitecture(scene: THREE.Object3D, b: Batcher, t: Terrain) {
   registerMaterials(b);
   const mainPA = maidanProps(b, t);
   for (const def of BUILDINGS) {
     if (def.kind === 'hall') meetingHall(b, scene, t, def);
     else if (def.kind === 'house') house(b, t, def);
+    else if (def.kind === 'modern') modernHouse(b, t, def);
     else teaShop(b, scene, t, def);
   }
   temple(b, t);
@@ -895,6 +978,7 @@ export function buildArchitecture(scene: THREE.Object3D, b: Batcher, t: Terrain)
   HOUSEBOATS.forEach((h, i) => houseboat(scene, b, h.x, h.z, h.yaw, i === 0));
   roadsAndBridges(b, t);
   viewpoint(b, t);
+  buildProps(scene, b, t);
   scatterSpeakers(b, t, mainPA, 24);
 
   // Direction signs at the main junction.

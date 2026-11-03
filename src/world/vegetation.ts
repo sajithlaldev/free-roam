@@ -1,14 +1,15 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
-  BUILDINGS, HEADLAND, JETTY, LIGHTHOUSE, MAIDAN, PADDY, ROAD_WIDTH, TEMPLE, TEMPLE_POND, WORLD_HALF, coastX,
+  BUILDINGS, HEADLAND, JETTY, LIGHTHOUSE, MAIDAN, OFFROAD, OFFROAD_PITS, PADDY, ROAD_WIDTH, TEMPLE, TEMPLE_POND, WORLD_HALF, coastX,
   hillMask, inRect, rect,
 } from './layout';
 import { Simplex2, mulberry32 } from './noise';
-import type { Terrain } from './terrain';
+import { onTrail, type Terrain } from './terrain';
 import { textures } from './textures';
 import { addWind } from './wind';
+import { pbr, layerSurface } from './pbr';
 
 const rnd = mulberry32(4242);
 const noise = new Simplex2(77);
@@ -284,7 +285,7 @@ export function grassMask(t: Terrain): (x: number, z: number) => boolean {
   const temple = rect(TEMPLE.x, TEMPLE.z, TEMPLE.size + 2, TEMPLE.size + 2);
   return (x, z) => {
     if (t.waterDepth(x, z) > 0 || t.roadDist(x, z) < ROAD_WIDTH / 2 + 1.2 || t.isPaddy(x, z) || x - coastX(z) < 24) return false;
-    if (hillMask(x, z) > 0.42 || inRect(MAIDAN, x, z, 0.5) || inRect(temple, x, z) || inRect(TEMPLE_POND, x, z, 2) || inRect(JETTY, x, z, 1)) return false;
+    if (hillMask(x, z) > 0.42 || inRect(OFFROAD, x, z, 4) || inRect(MAIDAN, x, z, 0.5) || inRect(temple, x, z) || inRect(TEMPLE_POND, x, z, 2) || inRect(JETTY, x, z, 1)) return false;
     if (blocked.some((r) => inRect(r, x, z))) return false;
     const ix = Math.round((x + half) / t.cell);
     const iz = Math.round((z + half) / t.cell);
@@ -301,7 +302,8 @@ export function buildVegetation(scene: THREE.Object3D, physics: RAPIER.World, t:
     t.roadDist(x, z) < ROAD_WIDTH / 2 + 1.5 + pad ||
     buildingRects.some((r) => inRect(r, x, z, pad)) ||
     inRect(temple, x, z, pad) || inRect(TEMPLE_POND, x, z, 3 + pad) || inRect(MAIDAN, x, z, -2 + pad) ||
-    inRect(JETTY, x, z, 2) || Math.hypot(x - LIGHTHOUSE.x, z - LIGHTHOUSE.z) < 16 || Math.abs(x - coastX(z)) < 2 && false;
+    inRect(JETTY, x, z, 2) || Math.hypot(x - LIGHTHOUSE.x, z - LIGHTHOUSE.z) < 16 ||
+    onTrail(x, z) > 0.05 || OFFROAD_PITS.some((q) => Math.hypot(x - q.x, z - q.z) < q.r * 1.3);
   const dry = (x: number, z: number) => t.waterDepth(x, z) === 0 && t.heightAt(x, z) > 0.35;
   const nearWater = (x: number, z: number, r: number) =>
     [[r, 0], [-r, 0], [0, r], [0, -r]].some(([dx, dz]) => t.waterDepth(x + dx, z + dz) > 0.3);
@@ -320,6 +322,7 @@ export function buildVegetation(scene: THREE.Object3D, physics: RAPIER.World, t:
       else if (nearWater(x, z, 18)) p = 0.35;
       if (t.isPaddy(x, z)) p = PADDY.some((r) => !inRect(r, x, z, -3)) ? 0.5 : 0; // only on the field edges
       if (hillMask(x, z) > 0.35) p = 0.015;
+      if (inRect(OFFROAD, x, z)) p = 0.05;
       if (BUILDINGS.some((d) => Math.hypot(d.x - x, d.z - z) < 22)) p = Math.max(p, 0.3);
       if (rnd() > p) continue;
       palms[Math.floor(rnd() * 3)].push({ x, y: t.heightAt(x, z) - 0.1, z, s: 0.8 + rnd() * 0.45, ry: rnd() * Math.PI * 2 });
@@ -428,14 +431,16 @@ export function buildVegetation(scene: THREE.Object3D, physics: RAPIER.World, t:
   addInstances(scene, tuftGeometry(0.55, 0.32), grassMat, grass, false, undefined, { tile: 50, maxDist: 90 });
 
   // ── rocks on the Kovalam headland and along the shore ──
-  const rockMat = new THREE.MeshStandardMaterial({ color: 0x6d6862, roughness: 0.95, flatShading: true });
-  const rockGeo = new THREE.DodecahedronGeometry(1, 1);
+  const rockMat = new THREE.MeshStandardMaterial({ ...layerSurface(pbr().rock), color: 0xb8b2a8, roughness: 0.85 });
+  let rockGeo: THREE.BufferGeometry = new THREE.IcosahedronGeometry(1, 2);
+  rockGeo.deleteAttribute('normal');
+  rockGeo = mergeVertices(rockGeo); // weld so the boulders shade smoothly
   {
     const p = rockGeo.getAttribute('position') as THREE.BufferAttribute;
     for (let i = 0; i < p.count; i++) {
       const v = new THREE.Vector3().fromBufferAttribute(p, i);
-      v.multiplyScalar(1 + 0.25 * noise.noise(v.x * 2, v.y * 2 + v.z));
-      p.setXYZ(i, v.x, v.y * 0.7, v.z);
+      v.multiplyScalar(1 + 0.22 * noise.noise(v.x * 1.6, v.y * 1.6 + v.z) + 0.08 * noise.noise(v.x * 5, v.z * 5 - v.y));
+      p.setXYZ(i, v.x, v.y * 0.66, v.z);
     }
     rockGeo.computeVertexNormals();
   }

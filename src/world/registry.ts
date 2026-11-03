@@ -17,6 +17,8 @@ export const registry = {
   pas: [] as PADef[],
   speakers: [] as Speaker[],
   seats: [] as Seat[],
+  /** Seats taken by NPCs. */
+  reservedSeats: new Set<number>(),
   /** Per-frame animation callbacks for world props (fans, nets, boats, lighthouse). */
   animators: [] as ((t: number, dt: number) => void)[],
 };

@@ -2,9 +2,12 @@
 <body><canvas id="c"></canvas><script type="module">
 import { World } from '/src/world/index.ts';
 import { registry } from '/src/world/registry.ts';
+import { Car, FORTUNER, JIMNY } from '/src/car.ts';
 const t0 = performance.now();
 const w = await World.create(document.getElementById('c'));
 window.__w = w; window.__reg = registry;
+if (new URLSearchParams(location.search).has('cars')) { const y = (x, z, sp) => w.terrain.heightAt(x, z) + sp.wheelRadius + 0.0; window.__cars = [new Car(90, w.physics, w.scene, 0, y(0, -30, FORTUNER), -30, 0.6, 0x17181a, FORTUNER), new Car(91, w.physics, w.scene, 4.5, y(4.5, -27, FORTUNER), -27, 0.6, 0xf1f1ee, FORTUNER), new Car(92, w.physics, w.scene, -4, y(-4, -32, JIMNY), -32, 0.6, 0xe8c21b, JIMNY)]; }
 window.__ready = { ms: Math.round(performance.now() - t0), stats: w.stats, rooms: registry.rooms.length, pas: registry.pas.length, speakers: registry.speakers.length, seats: registry.seats.length };
+window.viewRel = (px, py, pz, tx, ty, tz) => window.view(px, py + w.terrain.heightAt(px, pz), pz, tx, ty + w.terrain.heightAt(tx, tz), tz);
 window.view = (px, py, pz, tx, ty, tz) => { w.camera.position.set(px, py, pz); w.camera.lookAt(tx, ty, tz); w.update(0.016, new w.camera.position.constructor(tx, ty, tz)); w.render(); return w.renderer.info.render; };
 </script></body></html>
