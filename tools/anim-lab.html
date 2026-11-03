@@ -61,6 +61,11 @@ window.lab = {
     cam.position.set(p.x + 0.6, 1.25, p.z + 3.4); cam.lookAt(p.x, 0.95, p.z);
     renderer.render(scene, cam);
   },
+  /** Close-up of a point (e.g. a hand) from the front. */
+  handCam(p) {
+    cam.position.set(p.x + 0.25, p.y + 0.1, p.z + 0.55); cam.lookAt(p.x, p.y - 0.05, p.z);
+    renderer.render(scene, cam);
+  },
   av,
 };
 window.__ready = true;

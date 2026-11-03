@@ -206,7 +206,12 @@ The character model ships without animation clips, so the body is animated proce
 
 - **Legs:** analytic two-bone IK with planted feet. The stance foot's toe joint stays fixed on the ground while the heel strikes, rolls flat and lifts (the foot pivots about the toe, raising the ankle) before toe-off; cadence, stride and the stance/swing ratio follow speed and are scaled to the rig's leg length; hip height is solved each frame from what the stance leg can reach (the natural walking bob, ~7 cm), so the body never sinks into a crouch. Feet follow the ground slope. `tools/anim-lab.html` measures foot slip and hip/head height at each speed.
 - **Body:** pelvis bob (vaulting walk vs compressing run), lateral sway and twist; shoulders counter-rotate; arms swing opposite the legs and bend into a pumping sprint; lean into acceleration; bank into turns; the head stays level and looks into turns; turning on the spot makes the feet step.
-- **Jog:** about 3.2 m/s, a light run with a short flight phase, a smaller arm pump and less lean than the sprint.
+- **Run and sprint:** a proper running swing.
+  - **Legs:** after toe-off the heel kicks up behind towards the seat, the knee drives forward and up with the foot tucked under it, then the foot paws back down to a forefoot landing just ahead of the hips with the knee flexed.
+  - **Arms and body:** the arms pump from the hip pocket to chin height (elbow about 90°, closing in front and opening behind), and the whole body leans a few degrees forward when sprinting.
+  - **Cadence:** about 2.8 steps a second jogging and 3.2 sprinting, with longer flight phases than before.
+- **Jog:** about 3.2 m/s, the same running action with lighter effort: a lower heel kick and knee lift, a smaller arm pump and less lean.
+- **Hands:** the fingers are posed: relaxed and slightly curled when walking and standing, loose fists when running, a grip on the steering wheel and open hands when swimming.
 - **Walk:** follows measured human gait. It's a relaxed 1.3 m/s at about 1.8 steps a second, with pelvic list (the swing-side hip drops), sway over the stance foot and a modest arm swing that grows with speed, the elbow bending as each arm comes forward. Sprint is unchanged.
 - **Idle:**
   - **Always, when standing still:** breathing (chest and shoulders) and a slow balance sway.

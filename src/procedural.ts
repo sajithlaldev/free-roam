@@ -14,8 +14,10 @@ import * as THREE from 'three';
  *   head stays level and looks into the turn; turning on the spot makes the feet step.
  * - Jump (take-off, tuck, land with impact absorption), crouch, kneel → lie prone
  *   (and crawl), swim (breaststroke / treading water), sit (chair, car seat, driving).
- * - Jogging (~3 m/s) is a light run with a short flight phase, a smaller arm pump and less
- *   lean than a sprint.
+ * - Running: heel kick → knee drive → foot paws back to a forefoot landing under a flexed
+ *   knee; arms pump hip-to-chin with ~90° elbows; sprinting leans the body forward. Jogging
+ *   (~3 m/s) is the same action with less effort.
+ * - Fingers curl: relaxed walking/standing, loose fists running, gripping the wheel.
  * - Walking follows measured human gait: ~1.8 steps/s at 1.3 m/s, pelvic list (the swing
  *   side drops), lateral sway over the stance foot, modest arm swing with the elbow bending
  *   as the arm comes forward.
@@ -68,6 +70,21 @@ const sstep = (a: number, b: number, x: number) => {
   return t * t * (3 - 2 * t);
 };
 const smoother = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
+/** Uniform Catmull-Rom through points p[0..n-1] (end tangents mirrored), u in 0..1 over `knots`. */
+function spline(p: THREE.Vector3[], knots: number[], u: number, out: THREE.Vector3): THREE.Vector3 {
+  let i = 0;
+  while (i < knots.length - 2 && u > knots[i + 1]) i++;
+  const t = THREE.MathUtils.clamp((u - knots[i]) / (knots[i + 1] - knots[i]), 0, 1);
+  const p1 = p[i];
+  const p2 = p[i + 1];
+  const p0 = i > 0 ? p[i - 1] : p1.clone().multiplyScalar(2).sub(p2);
+  const p3 = i + 2 < p.length ? p[i + 2] : p2.clone().multiplyScalar(2).sub(p1);
+  const t2 = t * t;
+  const t3 = t2 * t;
+  for (const c of ['x', 'y', 'z'] as const)
+    out[c] = 0.5 * (2 * p1[c] + (-p0[c] + p2[c]) * t + (2 * p0[c] - 5 * p1[c] + 4 * p2[c] - p3[c]) * t2 + (-p0[c] + 3 * p1[c] - 3 * p2[c] + p3[c]) * t3);
+  return out;
+}
 const approach = (cur: number, target: number, rate: number, dt: number) => cur + (target - cur) * (1 - Math.exp(-rate * dt));
 const v3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
@@ -105,6 +122,10 @@ export class ProceduralRig {
   /** Fired at each swim stroke. */
   onStroke?: () => void;
   private b: Partial<Record<Name, THREE.Object3D>> = {};
+  /** Finger joints (index…pinky, joints 1–3) with how much of the curl each takes. */
+  private fingers: { bone: THREE.Object3D; rest: THREE.Quaternion; k: number }[] = [];
+  private curl = 0.3;
+  private qF = new THREE.Quaternion();
   private rest = new Map<THREE.Object3D, THREE.Quaternion>();
   private sides: Side[] = [];
   private pelvisY = 0.95;
@@ -154,6 +175,11 @@ export class ProceduralRig {
         this.rest.set(bone, bone.quaternion.clone());
       }
     }
+    // Fingers (if the rig has them): curl about the joint's local X axis.
+    model.traverse((o) => {
+      const m = /^(?:mixamorig:?)?(?:Left|Right)Hand(?:Index|Middle|Ring|Pinky)([123])(?:_\d+)?$/.exec(o.name);
+      if (m) this.fingers.push({ bone: o, rest: o.quaternion.clone(), k: [0.85, 1.15, 0.9][+m[1] - 1] });
+    });
     char.updateWorldMatrix(true, true);
     const P = (n: Name) => (this.b[n] ? this.local(this.b[n]!) : v3(0, 0, 0));
     for (const sx of [1, -1]) {
@@ -403,7 +429,7 @@ export class ProceduralRig {
     const moveW = Math.max(w.move, w.turn);
     // Walking cadence ≈ 1.0 + 0.62·v steps/s (≈1.8 steps/s at 1.3 m/s), scaled to leg length.
     const fWalk = (1.0 + (0.62 * s) / legScale) / 2; // cycles/s (two steps per cycle)
-    const fRun = (2.5 + (0.14 * s) / legScale) / 2;
+    const fRun = (2.35 + (0.13 * s) / legScale) / 2;
     let freq = THREE.MathUtils.lerp(fWalk, fRun, w.run) * (1 + 0.2 * w.crouch);
     if (turningInPlace) freq = 1.3;
     if (pitchW > 0.5) freq = 0.7 + 0.8 * s; // crawl
@@ -416,6 +442,7 @@ export class ProceduralRig {
     if (stepping && prevPhase < 0.5 && this.phase >= 0.5) this.onStep?.(-1, strength);
     if (inp.swim && s > 0.3 && prevPhase > this.phase) this.onStroke?.();
     const stride = turningInPlace ? 0 : s / Math.max(0.5, freq); // metres per cycle
+    const effort = sstep(2.5, 6, s); // 0 jog … 1 sprint
     // Stance (duty) fraction: ~0.6 walking, ~0.34 running; capped so the contact length stays
     // within what the leg can reach (sprinting is short ground contacts).
     let beta = THREE.MathUtils.lerp(0.58, 0.34, w.run);
@@ -444,7 +471,8 @@ export class ProceduralRig {
       let stanceU = -1;
       if (p < beta) {
         const u = p / beta;
-        const heel = heelMax * sstep(0.45, 1, u);
+        // Walking rolls heel → toe; running lands on the forefoot, the heel settling briefly.
+        const heel = heelMax * sstep(0.45, 1, u) + 0.22 * w.run * (1 - sstep(0, 0.3, u));
         A = ankleFor(tv.z + half * (1 - 2 * u) - shift, heel);
         pitch = heel - 0.22 * (1 - sstep(0, 0.2, u)) * (1 - w.run) * moveW; // heel strike: toes up
         stanceU = u;
@@ -455,6 +483,27 @@ export class ProceduralRig {
         const k = smoother(q);
         A = v3(x, THREE.MathUtils.lerp(from.y, to.y, q) + lift * Math.pow(Math.sin(Math.PI * q), 0.85), THREE.MathUtils.lerp(from.z, to.z, k));
         pitch = THREE.MathUtils.lerp(heelMax, -0.25 * moveW * (1 - 0.5 * w.run), k); // toes down after push-off → up before landing
+        if (w.run > 0.01) {
+          // Running swing: after toe-off the heel kicks up behind towards the seat (the knee
+          // folds), the knee drives forward and up with the foot tucked under it, then the
+          // shin swings out and the foot paws back down to land just ahead of the hips.
+          const kick = Lleg * (0.28 + 0.26 * effort);
+          const drive = Lleg * (0.15 + 0.11 * effort);
+          const kz = tv.z - Lleg * (0.12 + 0.04 * effort);
+          const pts = [
+            from,
+            v3(x, from.y + 0.4 * (sd.ankleH + kick - from.y), from.z + 0.3 * (kz - from.z)), // foot leaves upward, not further back
+            v3(x, sd.ankleH + kick, kz),
+            v3(x, sd.ankleH + drive, to.z + Lleg * (0.05 + 0.07 * effort)),
+            to,
+          ];
+          const R = spline(pts, [0, 0.14, 0.36, 0.76, 1], q, v3(0, 0, 0));
+          A.lerp(R, w.run);
+          // Toes point down off the ground, the foot cocks up (dorsiflexes) through the swing,
+          // and is near flat — slightly toe-down — for a forefoot landing.
+          const runPitch = q < 0.45 ? THREE.MathUtils.lerp(heelMax, -0.3, sstep(0, 0.45, q)) : THREE.MathUtils.lerp(-0.3, 0.12, sstep(0.45, 1, q));
+          pitch = THREE.MathUtils.lerp(pitch, runPitch, w.run);
+        }
       }
       // Standing: the unloaded foot sits a little forward and out, its knee relaxed; when the
       // weight moves across, it lifts slightly as it's repositioned.
@@ -491,7 +540,7 @@ export class ProceduralRig {
       if (stanceU >= 0) midStance = Math.max(midStance, Math.sin(Math.PI * stanceU));
     });
     let drop = Math.max(0, pY - allowed);
-    drop += 0.05 * w.run * midStance; // running: the stance knee absorbs
+    drop += (0.05 * midStance + 0.012 + 0.018 * effort) * w.run; // running: knees stay flexed, the stance knee absorbs
     drop += 0.46 * w.crouch + 0.22 * this.impact;
     drop *= 1 - w.air * 0.9;
     drop += (pY - (this.sides[0].L1 + 0.1)) * kneelW;
@@ -504,6 +553,8 @@ export class ProceduralRig {
     this.pose.position.y += w.swim * 0.25;
     this.pose.position.x = 0.025 * Math.sin(TAU * this.phase) * moveW * (1 - w.run) * standW;
     this.pose.rotation.set(pitch, 0, THREE.MathUtils.clamp(-this.yawRate * s * 0.032, -0.3, 0.3) * standW, 'YXZ');
+    // Sprinting: the whole body leans a few degrees forward from the ankles.
+    this.pose.rotation.x += 0.07 * effort * w.run * standW;
     // Standing: hips over the loaded leg (the loaded hip rides up), plus a slow balance sway.
     const swayX = (0.006 * Math.sin(this.t * 0.73) + 0.004 * Math.sin(this.t * 1.31 + 1)) * w.idle;
     this.pose.position.x += (0.06 * wLean + swayX) * standW;
@@ -524,7 +575,6 @@ export class ProceduralRig {
     const breathRate = 0.22 + 0.15 * Math.min(1, this.speed / 5) + 0.1 * w.sprint;
     this.breathPh = (this.breathPh + breathRate * dt) % 1;
     const breathe = Math.sin(this.breathPh * TAU);
-    const effort = sstep(2.5, 6, s); // 0 jog … 1 sprint
     const lean =
       (0.05 * moveW + (0.07 + 0.09 * effort) * w.run + 0.1 * w.sprint + 0.38 * w.crouch + THREE.MathUtils.clamp(this.accel * 0.03, -0.12, 0.15)) * standW +
       0.12 * kneelW - 0.06 * w.sit * (1 - w.car) + 0.08 * w.drive;
@@ -616,11 +666,14 @@ export class ProceduralRig {
       const sw = Math.sin(TAU * p);
       // Walking: a relaxed swing that grows with speed, a bit further forward than back.
       const walkAmp = 0.09 + 0.075 * Math.min(this.speed, 2);
-      const swing = (walkAmp * (1 - w.run) + (0.42 + 0.23 * sstep(2.5, 6, this.speed) + 0.15 * w.sprint) * w.run) * moveW * sw * (sw > 0 ? 1 + 0.15 * (1 - w.run) - 0.35 * w.run : 1 - 0.1 * (1 - w.run) + 0.3 * w.run);
+      const ef = sstep(2.5, 6, this.speed);
+      const swing = (walkAmp * (1 - w.run) + (0.45 + 0.4 * ef + 0.1 * w.sprint) * w.run) * moveW * sw * (sw > 0 ? 1 + 0.15 * (1 - w.run) - 0.2 * w.run : 1 - 0.1 * (1 - w.run) + 0.25 * w.run);
       const sway = 0.02 * Math.sin(this.t * 1.3 + sd.sx) * (1 - w.idle) + 0.012 * breathe * w.idle;
       const hang = THREE.MathUtils.degToRad(8 + 6 * w.run + 1.5 * breathe * w.idle);
       let upper = v3(sd.sx * Math.sin(hang), -Math.cos(hang), 0).applyAxisAngle(X, -(swing + sway) - 0.45 * w.crouch);
-      let elbow = 0.2 + 0.18 * moveW + 0.16 * Math.max(0, sw) * moveW * (1 - w.run) + (0.95 + 0.1 * sstep(2.5, 6, this.speed)) * w.run + 0.15 * w.sprint + 0.7 * w.crouch + 0.4 * w.run * sw;
+      // Running: ~90° at the elbow, closing to ~65° as the hand comes up in front, opening to ~110°
+      // as it drives back past the hip.
+      let elbow = 0.2 + 0.18 * moveW + 0.16 * Math.max(0, sw) * moveW * (1 - w.run) + (1.25 + 0.1 * ef) * w.run + 0.7 * w.crouch + (0.32 * sw) * w.run;
       // Airborne: arms come up and out for balance.
       if (w.air > 0.001) {
         upper.lerp(v3(sd.sx * 0.65, -0.35, inp.vy > 0 ? 0.45 : 0.2).normalize(), w.air).normalize();
@@ -674,6 +727,17 @@ export class ProceduralRig {
       this.aim(b[sd.fore], b[sd.hand], fore);
       // Crossed arms: hands curl back round the opposite arm instead of sticking out.
       if (this.idle.kind === 'cross' && this.idle.w * w.idle > 0.01) this.rot(b[sd.hand], this.axisAngle(Y, -sd.sx * 1.2 * this.idle.w * w.idle));
+    }
+
+    // ── fingers: relaxed curl; loose fist running (tighter sprinting); grip on the wheel ──
+    if (this.fingers.length) {
+      let c = 0.32 + (0.28 + 0.3 * effort) * w.run;
+      c = THREE.MathUtils.lerp(c, 0.45, w.crouch);
+      c = THREE.MathUtils.lerp(c, 0.4, w.sit * (1 - w.drive));
+      c = THREE.MathUtils.lerp(c, 1.05, w.drive);
+      c = THREE.MathUtils.lerp(c, 0.1, w.swim);
+      this.curl = approach(this.curl, c, 8, dt);
+      for (const f of this.fingers) f.bone.quaternion.copy(f.rest).multiply(this.qF.setFromAxisAngle(X, this.curl * f.k));
     }
   }
 }
