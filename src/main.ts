@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Announcer } from './announce';
-import { POS_HZ } from './config';
+import { AVATAR, POS_HZ } from './config';
 import { Net } from './net';
 import { LocalPlayer, RemotePlayer } from './player';
 import { UI, type PlayerRow } from './ui';
@@ -12,6 +12,7 @@ const SOLO = new URLSearchParams(location.search).has('solo');
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const ui = new UI();
+ui.setCredit(AVATAR.credit);
 const world = await World.create(canvas);
 ui.ready();
 
@@ -131,6 +132,7 @@ function frame(now: number) {
     const rows: PlayerRow[] = [];
     for (const r of remotes.values()) {
       const d = Math.hypot(r.pos.x - player.pos.x, r.pos.z - player.pos.z);
+      r.avatar.setShadow(d < 20);
       rows.push({
         name: r.name,
         distance: d,

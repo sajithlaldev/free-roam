@@ -37,6 +37,10 @@ export class UI {
     if (saved) $<HTMLInputElement>('name').value = saved;
   }
 
+  setCredit(text: string) {
+    $('credit').textContent = text;
+  }
+
   ready() {
     this.joinBtn.disabled = false;
     this.joinBtn.textContent = 'Join';

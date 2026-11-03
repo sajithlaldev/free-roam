@@ -36,14 +36,24 @@ Production: `npm run build && npm start` — the token server also serves `dist/
 - **Token server** (`server/token.ts`): mints a LiveKit token per player; tokens only allow publishing the microphone source.
 - **Movement** (`src/player.ts`): Rapier kinematic character controller (capsule, step climbing, slopes), third-person camera that pulls in against walls.
 
-## Your own models (milestone 4)
+## Character model
 
-Drop files in `public/models/`; they're picked up automatically, with placeholders used when absent:
+`public/models/avatar.glb` is the player character ("Mammotty 3d Model" by Peter Charles, CC BY 4.0 — see `public/models/CREDITS.md`; the credit is also shown on the join screen, as the license requires).
 
-- `avatar.glb` — a character with animation clips whose names contain `idle` and `walk`. Faces +Z, feet at the origin, ~1.7 m tall.
-- `world.glb` — the scene. Every mesh becomes a static trimesh collider, so keep it low-poly (use simpler proxy geometry if needed). The PA mic and speakers are code-placed props; the speaker scatter only knows about the placeholder obstacles, so with your own scene check the layout (or tweak `SPEAKER_SEED` / `MIC_POS` in `src/config.ts`).
+- **Any rigged glTF works.** It's scaled to 1.7 m with its feet on the ground, so the file's units don't matter; humanoid rigs are turned to face forward automatically. Settings live in `AVATAR` in `src/config.ts`.
+- **Animation:** if the file has clips whose names match idle / walk / run, those are used. This model has none, so humanoid rigs (standard Mixamo / Ready Player Me bone names like `Hips`, `LeftArm`, `LeftUpLeg`) get **procedural animation** (`src/procedural.ts`): arms come down out of the T-pose, idle breathing, and a walk/run cycle that speeds up with movement. Limbs are aimed at target directions, so it copes with T- or A-pose rigs. For nicer motion, export the character with Mixamo idle/walk/run clips and they take over automatically.
+- **Per-player colour:** the `outfit_top` material (`AVATAR.tintMaterial`) is recoloured per player from the texture's brightness, so everyone's shirt is a different colour but keeps its fabric detail.
+- **Size budget:** the original was 13.6 MB; it ships as 2.1 MB after `gltf-transform` dedup/prune + WebP textures + meshopt (Draco and meshopt both load). To compress a new model the same way:
 
-Draco and meshopt compression are both supported (the Draco decoder is copied to `public/draco` on `npm run dev`/`build`). Compress with e.g. `npx gltf-transform optimize in.glb out.glb --compress draco` (or `meshopt`).
+  ```bash
+  npx @gltf-transform/cli webp in.glb tmp.glb --quality 85
+  npx @gltf-transform/cli meshopt tmp.glb public/models/avatar.glb
+  ```
+- **Cost:** ~57k triangles per character. Only players within 20 m cast shadows, and off-screen characters are culled, but 20 people on screen is still ~1.2M triangles — use a lighter model if low-end laptops matter.
+
+## Your own world
+
+Drop `public/models/world.glb` in to replace the placeholder ground and obstacles. Every mesh becomes a static trimesh collider, so keep it low-poly (use simpler proxy geometry if needed). The PA mic and speakers are code-placed props; the speaker scatter only knows about the placeholder obstacles, so with your own scene check the layout (or tweak `SPEAKER_SEED` / `MIC_POS` in `src/config.ts`).
 
 ## Known limits
 

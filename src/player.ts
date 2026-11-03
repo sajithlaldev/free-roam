@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { cloneAvatar, getAvatarTemplate } from './assets';
-import { INTERP_DELAY_MS, SPAWN } from './config';
+import { ProceduralRig } from './procedural';
+import { AVATAR, INTERP_DELAY_MS, SPAWN } from './config';
 import type { World } from './world';
 
 const CAP_HALF = 0.5;
@@ -37,23 +38,26 @@ function makeLabel(text: string): THREE.Sprite {
   return s;
 }
 
-/** A capsule placeholder, swapped for public/models/avatar.glb (idle + walk clips) if present. */
+type Gait = 'idle' | 'walk' | 'run';
+
+/** A capsule placeholder, swapped for public/models/avatar.glb (idle/walk/run clips) if present. */
 export class Avatar {
   readonly group = new THREE.Group(); // origin at the feet, +Z is forward
   private body = new THREE.Group();
   private mixer?: THREE.AnimationMixer;
-  private idle?: THREE.AnimationAction;
-  private walk?: THREE.AnimationAction;
-  private walking = false;
+  private actions: Partial<Record<Gait, THREE.AnimationAction>> = {};
+  private gait: Gait = 'idle';
+  private current?: THREE.AnimationAction;
   private disposed = false;
   private label: THREE.Sprite;
+  private materials: THREE.Material[] = [];
+  private rig: ProceduralRig | null = null;
+  private speed = 0;
 
   constructor(name: string, identityForColour: string) {
     const color = new THREE.Color().setHSL(hueFor(identityForColour), 0.6, 0.55);
-    const capsule = new THREE.Mesh(
-      new THREE.CapsuleGeometry(CAP_R, CAP_HALF * 2, 6, 16),
-      new THREE.MeshStandardMaterial({ color }),
-    );
+    const capsuleMat = new THREE.MeshStandardMaterial({ color });
+    const capsule = new THREE.Mesh(new THREE.CapsuleGeometry(CAP_R, CAP_HALF * 2, 6, 16), capsuleMat);
     capsule.position.y = CENTER_Y;
     capsule.castShadow = true;
     const nose = new THREE.Mesh(
@@ -70,38 +74,63 @@ export class Avatar {
     void getAvatarTemplate().then((t) => {
       if (!t || this.disposed) return;
       this.body.clear();
-      const model = cloneAvatar(t);
-      model.traverse((o) => ((o as THREE.Mesh).isMesh ? ((o as THREE.Mesh).castShadow = true) : undefined));
+      const model = cloneAvatar(t, color);
+      model.traverse((o) => {
+        const m = (o as THREE.Mesh).material;
+        if (m && !Array.isArray(m) && m.name === AVATAR.tintMaterial) this.materials.push(m);
+      });
       this.body.add(model);
+      if (!this.shadow) model.traverse((o) => ((o as THREE.Mesh).isMesh ? (o.castShadow = false) : undefined));
       this.mixer = new THREE.AnimationMixer(model);
-      if (t.idle) this.idle = this.mixer.clipAction(t.idle).play();
-      if (t.walk) this.walk = this.mixer.clipAction(t.walk).play();
-      this.applyBlend(true);
+      for (const g of ['idle', 'walk', 'run'] as Gait[]) {
+        const clip = t[g];
+        if (clip) this.actions[g] = this.mixer.clipAction(clip);
+      }
+      this.play(this.gait, 0);
+      // No usable clips? Animate humanoid rigs procedurally.
+      if (!this.actions.idle && !this.actions.walk) this.rig = ProceduralRig.create(model);
     });
   }
 
-  setWalking(w: boolean) {
-    if (w === this.walking) return;
-    this.walking = w;
-    this.applyBlend(false);
+  private shadow = true;
+
+  /** Shadows cost a second pass over ~60k triangles per character; main.ts keeps them for nearby players only. */
+  setShadow(on: boolean) {
+    if (on === this.shadow) return;
+    this.shadow = on;
+    this.body.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) o.castShadow = on;
+    });
   }
 
-  private applyBlend(instant: boolean) {
-    const t = instant ? 0 : 0.2;
-    this.idle?.reset().play();
-    this.walk?.reset().play();
-    const on = this.walking ? this.walk : this.idle;
-    const off = this.walking ? this.idle : this.walk;
-    on?.fadeIn(t);
-    off?.fadeOut(t);
+  /** Pick idle / walk / run from horizontal speed (m/s). */
+  setSpeed(speed: number) {
+    this.speed = speed;
+    const g: Gait = speed > AVATAR.runAbove ? 'run' : speed > AVATAR.walkAbove ? 'walk' : 'idle';
+    if (g !== this.gait) {
+      this.gait = g;
+      this.play(g, 0.2);
+    }
+  }
+
+  private play(g: Gait, fade: number) {
+    // Fall back to walk if there's no run clip, and to idle if there's no walk clip.
+    const next = this.actions[g] ?? (g === 'run' ? this.actions.walk : undefined) ?? this.actions.idle;
+    if (!next || next === this.current) return;
+    next.reset().setEffectiveWeight(1).fadeIn(fade).play();
+    this.current?.fadeOut(fade);
+    this.current = next;
   }
 
   update(dt: number) {
     this.mixer?.update(dt);
+    this.rig?.update(dt, this.speed);
   }
 
   dispose() {
     this.disposed = true;
+    this.mixer?.stopAllAction();
+    this.materials.forEach((m) => m.dispose());
     const m = this.label.material as THREE.SpriteMaterial;
     m.map?.dispose();
     m.dispose();
@@ -165,7 +194,7 @@ export class RemotePlayer {
     } else if (dt > 0) {
       const v = Math.hypot(this.pos.x - px, this.pos.z - pz) / dt;
       this.speed += (v - this.speed) * Math.min(1, dt * 10);
-      this.avatar.setWalking(this.speed > 0.6);
+      this.avatar.setSpeed(this.speed);
     }
     this.avatar.group.position.copy(this.pos);
     this.avatar.group.rotation.y = this.yaw;
@@ -293,7 +322,7 @@ export class LocalPlayer {
 
     this.avatar.group.position.copy(this.pos);
     this.avatar.group.rotation.y = this.yaw;
-    this.avatar.setWalking(len > 0 && this.speed > 0.5);
+    this.avatar.setSpeed(len > 0 ? this.speed : 0);
     this.avatar.update(dt);
 
     this.updateCamera();

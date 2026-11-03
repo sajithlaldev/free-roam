@@ -78,6 +78,29 @@ function placeSpeakers(): SpeakerSpot[] {
 
 export const SPEAKERS: SpeakerSpot[] = placeSpeakers();
 
+/**
+ * Character model (public/models/avatar.glb). Any rigged glTF works: it's scaled to
+ * `height` with its feet on the ground, so the file's own units don't matter. Humanoid
+ * rigs (Mixamo / Ready Player Me bone names) are turned to face +Z automatically.
+ * - yawOffset: extra radians of rotation if it still faces the wrong way (try Math.PI).
+ * - clips: regexes matched against the file's animation names. If the file has no
+ *   idle/walk clips, humanoid rigs get procedural animation instead (src/procedural.ts).
+ * - tintMaterial: material recoloured per player so people are told apart (null = off).
+ * - credit: shown on the join screen (the bundled model is CC-BY-4.0, which requires it).
+ */
+export const AVATAR = {
+  url: '/models/avatar.glb',
+  height: 1.7,
+  yawOffset: 0,
+  clips: { idle: /idle/i, walk: /walk(?!jump)/i, run: /run/i },
+  tintMaterial: 'outfit_top' as string | null,
+  /** Horizontal speeds (m/s) where the animation switches to walk, then run. */
+  walkAbove: 0.6,
+  runAbove: 5.5,
+  credit:
+    'Character: “Mammotty 3d Model” by Peter Charles (sketchfab.com/dk3510329), CC BY 4.0 — compressed for the web',
+};
+
 /** Position sync. */
 export const POS_HZ = 15;
 export const INTERP_DELAY_MS = 100;
