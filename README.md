@@ -116,13 +116,13 @@ Always on: sky with image-based lighting, a drifting procedural cloud layer, win
 
 Two models, both data-driven (`VehicleSpec`) on Rapier's ray-cast vehicle controller:
 
-| | Jimny | Fortuner (2-inch lift, 285/70 R17 A/T) |
+| | Jimny | Fortuner (4-inch lift, 35-inch M/T) |
 | --- | --- | --- |
-| Mass | 1,090 kg | 2,150 kg |
+| Mass | 1,090 kg | 2,300 kg |
 | Engine | 1.5 petrol, 130 Nm | 2.8 diesel, 500 Nm @ 1,600–2,800 |
 | Gearbox | 4-speed auto + 4H/4L | 6-speed auto + 4H/4L |
-| 0–100 km/h (measured) | 11.8 s | 11.3 s |
-| 100–0 km/h | 36.6 m | 40.1 m |
+| 0–100 km/h (measured) | 11.8 s | 12.1 s |
+| 100–0 km/h | 36.6 m | 43.9 m |
 
 **Handling is tuned to feel like GTA IV**: heavy and momentum-driven; soft, under-damped springs; a sprung-body model so the body visibly leans out of corners, dives under braking, squats under power and wobbles after quick direction changes; no stability control, lighter traction control and a slightly loose rear so slides are easy to start and catch, with progressive understeer at the limit.
 
@@ -140,7 +140,11 @@ Details on both:
 
 Model-specific:
 - **Jimny:** boxy shape with drip rails, five-slot grille, round lamps, square-cut black over-fenders, side-hinged tailgate with the spare under a cover.
-- **Fortuner:** big trapezoid grille with a chrome bar into slim headlamps, rising beltline with the kinked rear quarter glass, black B and C pillars, wrap-around tail lamps, roof rails and spoiler, side steps, mud flaps, snorkel, red recovery hooks, skid plate and the spare under the rear.
+- **Fortuner:** big trapezoid grille with a chrome bar into slim headlamps, rising beltline with the kinked rear quarter glass, black B and C pillars and wrap-around tail lamps. It's built for off-road:
+  - **Lift:** 4-inch long-travel lift (about 11 cm more ground clearance, with the coilovers visible in the gap above the tyres) on 35-inch mud-terrains, a wider track and trimmed arches with wide flares.
+  - **Bumpers:** a steel winch bumper with a hoop, LED pods, fairlead and red shackles, and a high steel rear bumper.
+  - **Roof:** a roof rack with an LED light bar, the spare tyre, a jerry can and orange recovery boards.
+  - **Clearance:** snorkel, short mud flaps, and nothing hanging under the body.
 
 Each model's geometry is merged per material and shared by every car of that model. A car adds only its own paint, plates and lamp materials. Beyond about 38 m the interior, tread, brakes, chassis and running gear switch off.
 

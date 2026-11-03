@@ -11,7 +11,7 @@ export interface WheelStyle {
   spokes: number;
   rim: 'rimGun' | 'rimBlack';
   lip: 'rimLip' | 'rimBlack';
-  tread: 'at' | 'ht';
+  tread: 'at' | 'ht' | 'mt';
   caliper: 'caliperRed' | 'caliperGrey';
   lugs: number;
   /** how far in from the tyre's outer face the spoke face sits (dish) */
@@ -51,24 +51,25 @@ export function wheelGeos(st: WheelStyle): WheelGeos {
   spin.add('tyre', tyre);
 
   // ── tread blocks ──
-  const at = st.tread === 'at';
-  const nb = at ? 30 : 42;
+  const mt = st.tread === 'mt';
+  const at = st.tread !== 'ht';
+  const nb = mt ? 22 : at ? 30 : 42;
   const pitch = (Math.PI * 2) / nb;
   const circ = (Math.PI * 2 * R) / nb;
-  const dep = at ? 0.012 : 0.007;
-  const centre = new THREE.BoxGeometry(at ? W * 0.3 : W * 0.22, dep * 2, circ * (at ? 0.6 : 0.66));
-  const shoulder = new THREE.BoxGeometry(at ? 0.04 : 0.03, dep * 1.6, circ * (at ? 0.5 : 0.55));
+  const dep = mt ? 0.02 : at ? 0.012 : 0.007;
+  const centre = new THREE.BoxGeometry(mt ? W * 0.32 : at ? W * 0.3 : W * 0.22, dep * 2, circ * (mt ? 0.5 : at ? 0.6 : 0.66));
+  const shoulder = new THREE.BoxGeometry(mt ? 0.07 : at ? 0.04 : 0.03, dep * 1.6, circ * (mt ? 0.42 : at ? 0.5 : 0.55));
   const rows = at ? [-0.19, 0.19] : [-0.3, 0, 0.3];
   for (let k = 0; k < nb; k++) {
     rows.forEach((row, ri) => {
       const a = (k + (ri % 2 ? 0.5 : 0)) * pitch;
       const rr = R - dep * 0.25;
-      spin.at('tread', centre, row * W, Math.cos(a) * rr, Math.sin(a) * rr, a + (at ? (ri % 2 ? 0.12 : -0.12) : 0), 0, 0);
+      spin.at('tread', centre, row * W, Math.cos(a) * rr, Math.sin(a) * rr, a, mt ? (ri % 2 ? 0.35 : -0.35) : at ? (ri % 2 ? 0.12 : -0.12) : 0, 0);
     });
     for (const s of [-1, 1]) {
       const a = (k + (s > 0 ? 0.25 : 0.75)) * pitch;
-      const rr = R - 0.016;
-      spin.at('tread', shoulder, s * (W / 2 - 0.026), Math.cos(a) * rr, Math.sin(a) * rr, a, 0, s * -0.35);
+      const rr = R - (mt ? 0.026 : 0.016);
+      spin.at('tread', shoulder, s * (W / 2 - (mt ? 0.02 : 0.026)), Math.cos(a) * rr, Math.sin(a) * rr, a, 0, s * -0.35);
     }
   }
 

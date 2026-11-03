@@ -3,7 +3,7 @@
 // Turntable for the vehicle models: ?model=fortuner|jimny&color=hex. window.shot(yawDeg, elevDeg, dist, [tx,ty,tz]) renders a view.
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { buildFortuner, buildJimny } from '/src/car.ts';
+import { FORTUNER, JIMNY, buildFortuner, buildJimny, restWheelY } from '/src/car.ts';
 const q = new URLSearchParams(location.search);
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
@@ -33,9 +33,10 @@ scene.add(ground);
 const model = q.get('model') || 'fortuner';
 const color = parseInt(q.get('color') || (model === 'fortuner' ? 'f1f1ee' : 'e8c21b'), 16);
 const v = (model === 'fortuner' ? buildFortuner : buildJimny)(color, 'KL-07 BF 4321');
-const R = model === 'fortuner' ? 0.4 : 0.345;
-v.root.position.y = R - 0.02; // wheel centres sit 2 cm up at rest
-v.wheels.forEach((w) => (w.steer.position.y = 0.02));
+const spec = model === 'fortuner' ? FORTUNER : JIMNY;
+const wy = restWheelY(spec);
+v.root.position.y = spec.wheelRadius - wy; // body sits on its springs
+v.wheels.forEach((w) => (w.steer.position.y = wy));
 v.updateRunningGear();
 if (q.has('steer')) v.wheels.slice(0, 2).forEach((w) => (w.steer.rotation.y = 0.4));
 if (q.has('brake')) v.brakeMat.emissiveIntensity = 2.2;

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Announcer } from './announce';
-import { Car, FORTUNER, JIMNY, type CarInput } from './car';
+import { Car, FORTUNER, JIMNY, restWheelY, type CarInput } from './car';
 import { AVATAR, CAR_HZ, CAR_PARKED_HEARTBEAT_MS, POS_HZ } from './config';
 import { Net } from './net';
 import { Pedestrians } from './npc';
@@ -52,8 +52,10 @@ ui.setMapBackground(world.minimap(180));
 
 const cars = CAR_SPAWNS.map((s, i) => {
   const spec = s.model === 'fortuner' ? FORTUNER : JIMNY;
-  const y = world.terrain.heightAt(s.x, s.z) + spec.wheelRadius + 0.03;
-  return new Car(i, world.physics, world.scene, s.x, y, s.z, s.yaw, s.color, spec);
+  const y = world.terrain.heightAt(s.x, s.z) + spec.wheelRadius - restWheelY(spec) + 0.03;
+  const car = new Car(i, world.physics, world.scene, s.x, y, s.z, s.yaw, s.color, spec);
+  if (s.z < -150) car.visual.dirt.value = 0.4; // the off-road park's truck has seen some use
+  return car;
 });
 const race = new OffroadRace(world.scene, world.terrain, () => audio.sys);
 race.onMessage = (t) => ui.toast(t);

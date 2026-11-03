@@ -94,6 +94,8 @@ export function sharedMaterials(): Record<string, THREE.Material> {
     caliperRed: std({ color: 0xa3141a, roughness: 0.35, metalness: 0.2 }),
     caliperGrey: std({ color: 0x55585c, roughness: 0.4, metalness: 0.6 }),
     hook: std({ color: 0xc8161c, roughness: 0.35, metalness: 0.2 }),
+    powder: std({ color: 0x18191a, roughness: 0.72, metalness: 0.35, roughnessMap: grain }), // powder-coated steel
+    orange: std({ color: 0xff6a00, roughness: 0.55 }),
     liner: std({ color: 0x0e0e0e, roughness: 0.95, side: THREE.DoubleSide }),
     shockGold: std({ color: 0xd9a51a, roughness: 0.35, metalness: 0.4 }),
     shockBlack: std({ color: 0x1a1a1a, roughness: 0.45, metalness: 0.3 }),

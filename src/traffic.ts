@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { FORTUNER, JIMNY, buildFortuner, buildJimny, type VehicleSpec, type Visual } from './car';
+import { FORTUNER, JIMNY, buildFortuner, buildJimny, restWheelY, type VehicleSpec, type Visual } from './car';
 import type { SoundSystem, VehicleAudio } from './audio/sound';
 import { ROAD_WIDTH } from './world/layout';
 import { polyAt, type RoadProfile } from './world/terrain';
@@ -122,7 +122,7 @@ export class Traffic {
       const p = this.poseAt(v.road, (t - v.delay) * v.speed + v.phase * v.speed);
       const yawRate = Math.atan2(Math.sin(p.yaw - v.yaw), Math.cos(p.yaw - v.yaw)) / Math.max(dt, 1e-3);
       v.yaw = p.yaw;
-      const y = p.y + v.spec.wheelRadius - 0.01;
+      const y = p.y + v.spec.wheelRadius - restWheelY(v.spec) - 0.01;
       this.tmpQ.setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.yaw);
       v.body.setNextKinematicTranslation({ x: p.x, y, z: p.z });
       v.body.setNextKinematicRotation(this.tmpQ);
@@ -132,7 +132,7 @@ export class Traffic {
       v.spin += (v.cur / v.spec.wheelRadius) * dt;
       const steer = THREE.MathUtils.clamp((yawRate * v.spec.wheelbase) / Math.max(1, v.cur), -0.5, 0.5);
       v.visual.wheels.forEach((w, i) => {
-        w.steer.position.y = v.spec.mountY - (v.spec.restLength - 0.12);
+        w.steer.position.y = restWheelY(v.spec);
         w.steer.rotation.y = i < 2 ? steer : 0;
         w.spin.rotation.x = v.spin;
       });

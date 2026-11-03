@@ -27,7 +27,7 @@ export interface Visual {
 }
 
 /** Materials that take the dirt layer (body-side and wheel-side). */
-const DIRTY_BODY = ['paint', 'plastic', 'black', 'satin', 'rubber', 'liner'];
+const DIRTY_BODY = ['paint', 'plastic', 'black', 'satin', 'rubber', 'liner', 'powder'];
 const DIRTY_WHEEL = ['tyre', 'tread', 'rimBlack', 'rimGun', 'rimLip', 'rimInner'];
 
 /** Keys only worth drawing up close. */
@@ -52,8 +52,8 @@ export interface ModelDef {
     axles: { wheels: [number, number]; r: number; diff?: { x: number; r: number } }[];
     links: Link[];
   };
-  /** Optional spare wheel on the tailgate: position + yaw (built from the wheel style). */
-  spare?: { pos: THREE.Vector3; cover: boolean };
+  /** Optional spare wheel (built from the wheel style): position + Euler rotation. */
+  spare?: { pos: THREE.Vector3; rot: [number, number, number] };
 }
 
 const defs = new Map<string, ModelDef>();
@@ -89,7 +89,7 @@ export function buildVisual(model: 'jimny' | 'fortuner', color: number, plate: s
   const brakeMat = new THREE.MeshStandardMaterial({ color: 0x6a0a0c, emissive: 0xff1010, emissiveIntensity: 0.15, roughness: 0.2 });
   const reverseMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.2 });
   const plateMat = plateMaterial(plate);
-  const dirt = { value: 0.25 };
+  const dirt = { value: 0.1 };
   const own = new Map<string, THREE.Material>();
   own.set('paint', withDirt(paint(color), { uDirt: dirt }));
   for (const k of DIRTY_BODY) if (k !== 'paint') own.set(k, withDirt(sm[k] as THREE.MeshStandardMaterial, { uDirt: dirt }));
@@ -117,7 +117,7 @@ export function buildVisual(model: 'jimny' | 'fortuner', color: number, plate: s
   if (d.spare) {
     const sp = meshes(wg.spin, mat);
     sp.position.copy(d.spare.pos);
-    sp.rotation.y = Math.PI / 2; // outer face backwards
+    sp.rotation.set(...d.spare.rot);
     root.add(sp);
   }
 

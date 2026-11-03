@@ -129,23 +129,24 @@ export const JIMNY: VehicleSpec = {
 };
 
 /**
- * Toyota Fortuner-style SUV on a 2-inch lift with 285/70 R17 all-terrain tyres: 2.15 t,
- * 2.8 L diesel (500 Nm from 1,600 rpm), 6-speed automatic, low range; long-travel lifted
- * suspension that leans and wallows like a heavy GTA IV SUV.
+ * Fortuner-style SUV built for off-road: 4-inch long-travel lift, 35-inch mud-terrains on
+ * a wider track, steel bumpers and a loaded roof rack (2.3 t, higher centre of mass);
+ * 2.8 L diesel (500 Nm from 1,600 rpm), 6-speed automatic re-geared for the big tyres, low
+ * range. It leans and wallows like a heavy GTA IV SUV.
  */
 export const FORTUNER: VehicleSpec = {
   name: 'Fortuner',
   model: 'fortuner',
-  mass: 2150,
-  inertia: { x: 3900, y: 4200, z: 1150 },
-  com: { x: 0, y: 0.24, z: 0.12 },
+  mass: 2300,
+  inertia: { x: 4200, y: 4500, z: 1300 },
+  com: { x: 0, y: 0.3, z: 0.1 },
   wheelbase: 2.745,
-  track: 1.62,
-  wheelRadius: 0.4,
-  wheelWidth: 0.29,
+  track: 1.68,
+  wheelRadius: 0.44,
+  wheelWidth: 0.32,
   mountY: 0.34,
-  restLength: 0.5,
-  maxTravel: 0.38,
+  restLength: 0.6,
+  maxTravel: 0.44,
   stiffness: 12.5,
   compression: 1.2,
   relaxation: 1.8,
@@ -161,7 +162,7 @@ export const FORTUNER: VehicleSpec = {
   torque: [[750, 260], [1200, 400], [1600, 500], [2800, 500], [3400, 440], [4000, 380], [4600, 300]],
   gears: [3.6, 2.09, 1.49, 1.2, 1.0, 0.79],
   reverse: 3.3,
-  finalDrive: 3.583,
+  finalDrive: 4.1,
   transferHigh: 1.0,
   transferLow: 2.566,
   efficiency: 0.85,
@@ -182,12 +183,17 @@ export const FORTUNER: VehicleSpec = {
     new THREE.Vector3(0.42, 0.46, -0.9),
   ],
   eye: 0.78,
-  camDist: 7.5,
-  exitX: 1.65,
+  camDist: 7.8,
+  exitX: 1.75,
   diesel: true,
-  bodyRoll: 0.0115,
+  bodyRoll: 0.0125,
   bodyPitch: 0.0065,
 };
+
+/** Wheel-centre height (chassis frame) with the car at rest on level ground. */
+export function restWheelY(s: VehicleSpec): number {
+  return s.mountY - s.restLength + Math.min(s.maxTravel, 9.81 / (4 * s.stiffness));
+}
 
 function torqueAt(curve: [number, number][], rpm: number) {
   if (rpm <= curve[0][0]) return curve[0][1];

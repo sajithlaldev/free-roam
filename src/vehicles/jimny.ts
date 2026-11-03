@@ -220,7 +220,7 @@ export function jimnyModel(): ModelDef {
     track: TX * 2,
     wheelbase: HZ * 2,
     steering: { pos: new THREE.Vector3(-0.37, 0.72, 0.3), tilt: -1.1, R: 0.18 },
-    spare: { pos: new THREE.Vector3(0, 0.6, -1.89), cover: true },
+    spare: { pos: new THREE.Vector3(0, 0.6, -1.89), rot: [0, Math.PI / 2, 0] },
     gear: {
       axles: [
         { wheels: [0, 1], r: 0.042, diff: { x: 0.14, r: 0.11 } },
