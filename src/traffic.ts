@@ -55,6 +55,10 @@ export class Traffic {
     });
   }
 
+  lod(camera: THREE.Vector3) {
+    for (const v of this.vehicles) v.visual.lod(camera);
+  }
+
   /** Pose along the loop at distance d: lane position, heading, height. */
   private poseAt(r: RoadProfile, d: number) {
     const L = Math.max(20, r.length - 2 * END);
@@ -132,6 +136,7 @@ export class Traffic {
         w.steer.rotation.y = i < 2 ? steer : 0;
         w.spin.rotation.x = v.spin;
       });
+      v.visual.updateRunningGear();
       v.visual.steeringWheel.rotation.z = -steer * 9;
       v.visual.brakeMat.emissiveIntensity = blocked ? 2.2 : 0.15;
       v.blockedFor = blocked ? v.blockedFor + dt : 0;

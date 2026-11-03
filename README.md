@@ -126,6 +126,28 @@ Two models, both data-driven (`VehicleSpec`) on Rapier's ray-cast vehicle contro
 
 **Handling is tuned to feel like GTA IV**: heavy and momentum-driven; soft, under-damped springs; a sprung-body model so the body visibly leans out of corners, dives under braking, squats under power and wobbles after quick direction changes; no stability control, lighter traction control and a slightly loose rear so slides are easy to start and catch, with progressive understeer at the limit.
 
+### Models (`src/vehicles/`)
+
+Both vehicles are modelled in code with a small toolkit (`kit.ts`):
+- **Body shells:** lofted from cross-sections along the car (sill, side wall with a slight bow, shoulder radius, cambered bonnet and roof). The wheel arches are cut out of the side walls, and the ends close with filleted faces. Every grid cell is given a material by a classifier, so windscreen, side glass, pillars, the roof, cladding and door shut lines all come out of one surface and line up exactly.
+- **Swept parts:** a 2D profile run along a path, used for bumpers, arch flares and cladding, lamps that wrap round the corners, chrome belt lines, roof rails, the snorkel and trim.
+
+Details on both:
+- **Wheels:** the tyre carcass has bulging sidewalls and a lettered sidewall texture, with separate tread blocks (all-terrain on the Fortuner, highway tread on the Jimny). Rims are spoked alloys with lips and lug nuts, with brake discs and calipers behind them (calipers stay put while the wheel turns).
+- **Lamps and glass:** lamps have reflectors, bulbs or projectors, clear lenses and LED strips. Glass is tinted and reflective, set slightly into the frame.
+- **Underneath:** wheel-well liners, a ladder frame and underbody, and running gear that follows the wheels: axle beams with diffs, wishbones and links, and shocks with coil springs.
+- **Cabin:** seats, dash, gauges, screen, console, door cards and headliner, so the first-person view works.
+
+Model-specific:
+- **Jimny:** boxy shape with drip rails, five-slot grille, round lamps, square-cut black over-fenders, side-hinged tailgate with the spare under a cover.
+- **Fortuner:** big trapezoid grille with a chrome bar into slim headlamps, rising beltline with the kinked rear quarter glass, black B and C pillars, wrap-around tail lamps, roof rails and spoiler, side steps, mud flaps, snorkel, red recovery hooks, skid plate and the spare under the rear.
+
+Each model's geometry is merged per material and shared by every car of that model. A car adds only its own paint, plates and lamp materials. Beyond about 38 m the interior, tread, brakes, chassis and running gear switch off.
+
+**Mud:** a dirt layer builds up on the lower body and wheels as you drive through mud (and slowly on dirt tracks), and washes off when you ford water.
+
+`tools/car-studio.html?model=fortuner|jimny&color=17181a&dirt=0.6` is a turntable for looking at the models.
+
 ### The Jimny
 
 A Suzuki Jimny–style 4x4 (boxy body, round lamps, five-slot grille, flared arches, tailgate spare, drip rails, KL plates, right-hand drive with a turning steering wheel, working brake and reverse lights) on Rapier's ray-cast vehicle controller:
@@ -186,7 +208,8 @@ If you add real clips to the model (names matching idle / walk / run), they're u
 | `src/world/registry.ts` | Rooms, PA systems, speakers, seats (built deterministically; ids go over the wire) |
 | `src/player.ts` | Local player (movement, stances, swimming, seats, cars, cameras) and remote players |
 | `src/procedural.ts` | The animation system |
-| `src/car.ts` | Jimny and Fortuner models, drivetrain and physics |
+| `src/car.ts` | Vehicle specs, drivetrain and physics |
+| `src/vehicles/` | Vehicle models: modelling toolkit, materials (paint, glass, mud), wheels and parts, Jimny, Fortuner |
 | `src/race.ts` | Off-road Challenge: gates, timing, medals, HUD |
 | `src/voice.ts` | Proximity voice, room occlusion, PA routing, engine sound |
 | `src/net.ts` | LiveKit room + compact binary data protocol (`tools/net-protocol.html` round-trips it) |

@@ -287,6 +287,26 @@ function carInput(): CarInput {
   };
 }
 
+/**
+ * Mud builds up as a car drives through mud (and a little on dirt and grass), and washes off
+ * when it fords water. Cosmetic and local (each player sees their own estimate).
+ */
+function updateDirt(c: Car, dt: number) {
+  const sp = Math.abs(c.state.speed);
+  if (sp < 0.5 && !c.simulating) return;
+  const p = c.position();
+  const bottom = p.y - c.spec.wheelRadius - 0.04;
+  const depth = WATER_Y - bottom;
+  const d = c.visual.dirt;
+  if (depth > 0.15) d.value -= dt * 0.1 * Math.min(3, depth / 0.25) * (0.4 + Math.min(1, sp / 4));
+  else if (sp > 0.5) {
+    const s = surfaceAt(p.x, bottom, p.z);
+    const k = Math.min(1, sp / 8);
+    d.value += dt * k * (s === 'mud' ? 0.07 : s === 'soil' || s === 'sand' ? 0.01 : s === 'gravel' ? 0.006 : s === 'grass' ? 0.002 : 0);
+  }
+  d.value = THREE.MathUtils.clamp(d.value, 0.08, 1);
+}
+
 function frame(now: number) {
   requestAnimationFrame(frame);
   const dt = Math.min((now - last) / 1000, 0.1);
@@ -356,7 +376,12 @@ function frame(now: number) {
     for (const c of cars) people.push([c.visual.root.position, c.spec.track / 2 + 0.6]);
     pedestrians.update(dt, world.camera.position, people);
   }
-  for (const c of cars) c.update(now, dt);
+  for (const c of cars) {
+    c.update(now, dt);
+    c.visual.lod(world.camera.position);
+    updateDirt(c, dt);
+  }
+  traffic?.lod(world.camera.position);
   for (const r of remotes.values()) {
     r.update(now, dt, cars);
     r.head(head);
