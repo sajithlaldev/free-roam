@@ -68,6 +68,7 @@ interface Side {
   arm: Name; fore: Name; hand: Name;
   hip: THREE.Vector3; // rest positions (character frame)
   L1: number; L2: number; ankleH: number; footDir: THREE.Vector3;
+  toeVec: THREE.Vector3; // ankle → toe joint at rest
   A1: number; A2: number;
   planted: THREE.Vector3; // current foot target (for smoothing)
 }
@@ -134,7 +135,8 @@ export class ProceduralRig {
       s.L1 = s.hip.distanceTo(knee);
       s.L2 = knee.distanceTo(ankle);
       s.ankleH = ankle.y;
-      s.footDir = this.b[s.toe] ? P(s.toe).sub(ankle).normalize() : v3(0, -0.3, 1).normalize();
+      s.toeVec = this.b[s.toe] ? P(s.toe).sub(ankle) : v3(0, -0.035, 0.1);
+      s.footDir = s.toeVec.clone().normalize();
       s.A1 = P(s.arm).distanceTo(P(s.fore));
       s.A2 = P(s.fore).distanceTo(P(s.hand));
       s.planted = v3(s.hip.x * 0.85, s.ankleH, 0);
@@ -226,22 +228,81 @@ export class ProceduralRig {
     const kneelW = sstep(0, 0.45, w.prone) * (1 - pitchW);
     const standW = (1 - w.sit) * (1 - w.swim) * (1 - pitchW) * (1 - kneelW);
 
-    // ── gait clock ──
-    const freq = turningInPlace ? 1.3 : (0.78 + 0.17 * s) * (1 + 0.25 * w.crouch) * (pitchW > 0.5 ? 0.9 : 1);
-    this.phase = (this.phase + Math.min(1.7, freq) * dt) % 1;
-    const beta = THREE.MathUtils.lerp(0.62, 0.37, w.run); // stance fraction
-    const stride = turningInPlace ? 0 : s / Math.max(0.6, freq); // metres per full cycle
-    const lift = Math.min(0.34, 0.07 + 0.045 * s) * (1 - 0.45 * w.crouch) + 0.06 * w.turn;
+    // ── gait: cadence and stride from speed, scaled to this rig's leg length ──
+    const Lleg = this.sides[0].L1 + this.sides[0].L2;
+    const legScale = Lleg / 0.85;
     const moveW = Math.max(w.move, w.turn);
+    const fWalk = (1.72 + (0.3 * s) / legScale) / 2; // cycles/s (two steps per cycle)
+    const fRun = (2.5 + (0.14 * s) / legScale) / 2;
+    let freq = THREE.MathUtils.lerp(fWalk, fRun, w.run) * (1 + 0.2 * w.crouch);
+    if (turningInPlace) freq = 1.3;
+    if (pitchW > 0.5) freq = 0.7 + 0.8 * s; // crawl
+    this.phase = (this.phase + Math.min(1.9, freq) * dt) % 1;
+    const stride = turningInPlace ? 0 : s / Math.max(0.5, freq); // metres per cycle
+    // Stance (duty) fraction: ~0.6 walking, ~0.34 running; capped so the contact length stays
+    // within what the leg can reach (sprinting is short ground contacts).
+    let beta = THREE.MathUtils.lerp(0.58, 0.34, w.run);
+    if (stride > 0.01) beta = Math.max(0.2, Math.min(beta, (1.1 * Lleg) / stride));
+    const half = ((beta * stride) / 2) * moveW;
+    const lift = (Math.min(0.32, 0.06 + 0.04 * s) * (1 - 0.45 * w.crouch) + 0.05 * w.turn) * moveW;
+    const heelMax = THREE.MathUtils.lerp(0.9, 1.15, w.run) * moveW; // heel lift at toe-off (rad)
+    const shift = 0.3 * half; // the foot lands just ahead and leaves well behind
+    this.char.updateWorldMatrix(true, false);
+    const here = this.char.getWorldPosition(new THREE.Vector3());
+    const groundHere = inp.ground ? inp.ground(here.x, here.z) : 0;
+
+    // Foot targets (character frame). The stance foot's toe joint is planted on the ground and
+    // slides back under the body as it moves forward; late in stance the heel lifts, rotating the
+    // foot about the toe, which raises and advances the ankle (heel-to-toe roll-off).
+    const targets = this.sides.map((sd) => {
+      const p = (this.phase + (sd.sx > 0 ? 0 : 0.5)) % 1;
+      const tv = sd.toeVec;
+      const x = sd.hip.x * THREE.MathUtils.lerp(0.95, 0.8, moveW);
+      const ankleFor = (toeZ: number, heel: number) => {
+        const d = tv.clone().applyAxisAngle(X, heel);
+        return v3(x, sd.ankleH + tv.y - d.y, toeZ - d.z);
+      };
+      let A: THREE.Vector3;
+      let pitch: number;
+      let stanceU = -1;
+      if (p < beta) {
+        const u = p / beta;
+        const heel = heelMax * sstep(0.45, 1, u);
+        A = ankleFor(tv.z + half * (1 - 2 * u) - shift, heel);
+        pitch = heel - 0.22 * (1 - sstep(0, 0.2, u)) * (1 - w.run) * moveW; // heel strike: toes up
+        stanceU = u;
+      } else {
+        const q = (p - beta) / (1 - beta);
+        const from = ankleFor(tv.z - half - shift, heelMax);
+        const to = ankleFor(tv.z + half - shift, 0);
+        const k = smoother(q);
+        A = v3(x, THREE.MathUtils.lerp(from.y, to.y, q) + lift * Math.pow(Math.sin(Math.PI * q), 0.85), THREE.MathUtils.lerp(from.z, to.z, k));
+        pitch = THREE.MathUtils.lerp(heelMax, -0.25 * moveW * (1 - 0.5 * w.run), k); // toes down after push-off → up before landing
+      }
+      if (inp.ground && inp.grounded && w.sit < 0.5) {
+        const wpos = this.char.localToWorld(v3(A.x, 0, A.z));
+        A.y += THREE.MathUtils.clamp(inp.ground(wpos.x, wpos.z) - groundHere, -0.35, 0.35);
+      }
+      return { A, pitch, stanceU };
+    });
 
     // ── pose group: pelvis height, pitch (prone / swim), bank ──
     const pY = this.pelvisY;
-    const Lleg = this.sides[0].L1 + this.sides[0].L2;
-    const half = (beta * stride) / 2;
-    const reach = Math.sqrt(Math.max(0.01, (0.965 * Lleg) ** 2 - half * half));
-    let drop = Math.max(0, pY - this.sides[0].ankleH - reach) * moveW;
-    const cyc = Math.cos(TAU * 2 * (this.phase - beta / 2));
-    drop += -0.022 * cyc * moveW * (1 - w.run) + 0.045 * cyc * w.run; // vault over the stance leg / compress when running
+    // Hip height the legs allow: the lowest of what each foot target can reach (the compass
+    // gait: high over the stance leg at mid-stance, lower in double support).
+    const R = 0.98 * Lleg;
+    let allowed = Infinity;
+    let midStance = 0;
+    this.sides.forEach((sd, i) => {
+      const { A, stanceU } = targets[i];
+      const dx = A.x - sd.hip.x;
+      const dz = A.z - sd.hip.z;
+      // Late stance (heel off) and swing don't hold the hips down: that knee bends / the toe leaves.
+      if (stanceU >= 0 && stanceU < 0.72) allowed = Math.min(allowed, A.y + Math.sqrt(Math.max(0, R * R - dx * dx - dz * dz)));
+      if (stanceU >= 0) midStance = Math.max(midStance, Math.sin(Math.PI * stanceU));
+    });
+    let drop = Math.max(0, pY - allowed);
+    drop += 0.05 * w.run * midStance; // running: the stance knee absorbs
     drop += 0.46 * w.crouch + 0.22 * this.impact;
     drop *= 1 - w.air * 0.9;
     drop += (pY - (this.sides[0].L1 + 0.1)) * kneelW;
@@ -282,33 +343,11 @@ export class ProceduralRig {
 
     // ── legs ──
     const pole = v3(0, 0, 1);
-    for (const sd of this.sides) {
+    this.sides.forEach((sd, i) => {
       const p = (this.phase + (sd.sx > 0 ? 0 : 0.5)) % 1;
-      // Stand / walk / run with planted feet.
-      let fz: number;
-      let fy: number;
-      let footPitch: number;
-      if (p < beta) {
-        const u = p / beta;
-        fz = half * (1 - 2 * u);
-        fy = 0;
-        footPitch = -0.45 * sstep(0.72, 1, u) * moveW; // heel off before toe off
-      } else {
-        const q = (p - beta) / (1 - beta);
-        fz = -half + 2 * half * smoother(q);
-        fy = lift * Math.pow(Math.sin(Math.PI * q), 0.85);
-        footPitch = THREE.MathUtils.lerp(0.5, -0.15, q) * moveW;
-      }
-      fz *= moveW;
-      fy *= moveW;
       const hip = this.local(b[sd.up]!, this.wp);
-      let groundOff = 0;
-      if (inp.ground && inp.grounded && w.sit < 0.5) {
-        const wpos = this.char.localToWorld(v3(hip.x, 0, fz));
-        const here = this.char.getWorldPosition(this.v1);
-        groundOff = THREE.MathUtils.clamp(inp.ground(wpos.x, wpos.z) - inp.ground(here.x, here.z), -0.35, 0.35);
-      }
-      const F = v3(sd.hip.x * 0.82, sd.ankleH + fy + groundOff, fz + 0.03);
+      const F = targets[i].A.clone();
+      let footPitch = targets[i].pitch;
       // Airborne: tuck (rising: trailing leg back; falling: both knees up for the landing).
       if (w.air > 0.01) {
         const rising = inp.vy > 0.5;
@@ -363,22 +402,25 @@ export class ProceduralRig {
       this.aim(b[sd.up], b[sd.leg], thigh);
       this.aim(b[sd.leg], b[sd.foot], shin);
       if (b[sd.toe]) this.aim(b[sd.foot], b[sd.toe], foot);
-    }
+    });
 
     // ── arms ──
     for (const sd of this.sides) {
       const p = (this.phase + (sd.sx > 0 ? 0.5 : 0)) % 1; // opposite to the same-side leg
-      const swing = (0.22 + 0.5 * w.run + 0.15 * w.sprint) * moveW * Math.sin(TAU * p);
+      // Running arms swing further back than forward, and the elbow closes as the arm comes
+      // forward (hand up towards the chin), opening again on the back-swing.
+      const sw = Math.sin(TAU * p);
+      const swing = (0.2 + 0.45 * w.run + 0.15 * w.sprint) * moveW * sw * (sw > 0 ? 1 - 0.35 * w.run : 1 + 0.3 * w.run);
       const sway = 0.025 * Math.sin(this.t * 1.3 + sd.sx);
       const hang = THREE.MathUtils.degToRad(9 + 6 * w.run);
       let upper = v3(sd.sx * Math.sin(hang), -Math.cos(hang), 0).applyAxisAngle(X, -(swing + sway) - 0.45 * w.crouch);
-      let elbow = 0.22 + 0.25 * moveW + 1.05 * w.run + 0.25 * w.sprint + 0.7 * w.crouch;
+      let elbow = 0.22 + 0.25 * moveW + 1.05 * w.run + 0.15 * w.sprint + 0.7 * w.crouch + 0.4 * w.run * sw;
       // Airborne: arms come up and out for balance.
       if (w.air > 0.001) {
         upper.lerp(v3(sd.sx * 0.65, -0.35, inp.vy > 0 ? 0.45 : 0.2).normalize(), w.air).normalize();
         elbow = THREE.MathUtils.lerp(elbow, 0.7, w.air);
       }
-      let fore = upper.clone().applyAxisAngle(X, -elbow).applyAxisAngle(Y, -sd.sx * 0.28 * w.run).normalize();
+      let fore = upper.clone().applyAxisAngle(X, -elbow).applyAxisAngle(Y, -sd.sx * 0.35 * w.run).normalize();
 
       if (kneelW > 0.001) {
         upper.lerp(v3(sd.sx * 0.2, -0.85, 0.5).normalize(), kneelW).normalize();

@@ -3,7 +3,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { cloneAvatar, getAvatarTemplate } from './assets';
 import { AVATAR, INTERP_DELAY_MS } from './config';
 import type { Car } from './car';
-import { ProceduralRig, type AnimInput, type SitMode, type Stance } from './procedural';
+import { ProceduralRig, findHumanoidBone, type AnimInput, type SitMode, type Stance } from './procedural';
 import { SPAWN, WATER_Y } from './world/layout';
 import { registry } from './world/registry';
 import type { World } from './world/index';
@@ -16,6 +16,10 @@ const GRAVITY = 9.81;
 const JUMP_V = 3.4; // ≈ 0.6 m jump
 const SWIM_DEPTH = 1.25; // deeper than this (at the player's position) → swimming
 const SWIM_FEET = WATER_Y - 1.32; // feet height while floating
+
+export type CamMode = 'normal' | 'far' | 'shoulder' | 'first';
+export const CAM_MODES: CamMode[] = ['normal', 'far', 'shoulder', 'first'];
+export const CAM_LABEL: Record<CamMode, string> = { normal: 'Normal', far: 'Zoomed out', shoulder: 'Over the shoulder', first: 'First person' };
 
 function hueFor(s: string): number {
   let h = 0;
@@ -58,6 +62,8 @@ export class Avatar {
   private disposed = false;
   private materials: THREE.Material[] = [];
   private shadow = true;
+  private headBone?: THREE.Object3D;
+  private headHidden = false;
 
   constructor(name: string, identityForColour: string) {
     const color = new THREE.Color().setHSL(hueFor(identityForColour), 0.6, 0.55);
@@ -80,6 +86,8 @@ export class Avatar {
         if ((o as THREE.Mesh).isMesh) o.castShadow = this.shadow;
       });
       this.pose.add(model);
+      this.headBone = findHumanoidBone(model, 'Head');
+      this.setHeadHidden(this.headHidden);
       if (t.idle && t.walk) {
         this.mixer = new THREE.AnimationMixer(model);
         for (const g of ['idle', 'walk', 'run'] as const) if (t[g]) this.actions[g] = this.mixer.clipAction(t[g]!);
@@ -93,6 +101,21 @@ export class Avatar {
     if (on === this.shadow) return;
     this.shadow = on;
     this.body.traverse((o) => (o as THREE.Mesh).isMesh && (o.castShadow = on));
+  }
+
+  /** First person: collapse the head (and everything skinned to it) so it doesn't block the view. */
+  setHeadHidden(h: boolean) {
+    this.headHidden = h;
+    this.headBone?.scale.setScalar(h ? 0.001 : 1);
+  }
+
+  /** World position of the eyes (follows the animated head bone when there is one). */
+  eyes(out: THREE.Vector3, fallbackHeight: number): THREE.Vector3 {
+    if (this.headBone) {
+      this.headBone.getWorldPosition(out);
+      return out.add(new THREE.Vector3(0, 0.07, 0));
+    }
+    return out.copy(this.group.position).add(new THREE.Vector3(0, fallbackHeight, 0));
   }
 
   setLabelVisible(v: boolean) {
@@ -277,6 +300,16 @@ export class LocalPlayer {
   elev = 0.32;
   camDist = 3.6;
   enabled = true;
+  camMode: CamMode = (() => {
+    try {
+      const m = localStorage.getItem('vw-cam') as CamMode | null;
+      return m && CAM_MODES.includes(m) ? m : 'normal';
+    } catch {
+      return 'normal';
+    }
+  })();
+  /** Called when V switches the camera (for the HUD). */
+  onCamMode?: (m: CamMode) => void;
 
   stance: Stance = 0;
   sprint = false;
@@ -489,9 +522,13 @@ export class LocalPlayer {
     const a = 1 - Math.exp(-accel * h * 0.5);
     if (this.grounded || this.swimming) this.vel.set(this.vel.x + (tx - this.vel.x) * a, this.vel.y + (tz - this.vel.y) * a);
 
-    // Turn toward the movement direction at a human rate.
+    // Turn toward the movement direction at a human rate (in first person: face the view).
     const prevYaw = this.yaw;
-    if (len > 0) {
+    if (this.camMode === 'first') {
+      let d = this.camYaw - this.yaw;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      this.yaw += THREE.MathUtils.clamp(d, -12 * h, 12 * h);
+    } else if (len > 0) {
       const want = Math.atan2(mx, mz);
       let d = want - this.yaw;
       d = Math.atan2(Math.sin(d), Math.cos(d));
@@ -539,6 +576,15 @@ export class LocalPlayer {
 
   /** Per-frame: avatar placement, animation, camera. */
   update(dt: number) {
+    if (this.tapped('KeyV')) {
+      this.camMode = CAM_MODES[(CAM_MODES.indexOf(this.camMode) + 1) % CAM_MODES.length];
+      try {
+        localStorage.setItem('vw-cam', this.camMode);
+      } catch {
+        /* private mode */
+      }
+      this.onCamMode?.(this.camMode);
+    }
     const g = this.avatar.group;
     let sit: SitMode = 0;
     let steer = 0;
@@ -574,33 +620,74 @@ export class LocalPlayer {
 
   private updateCamera(dt: number) {
     const cam = this.world.camera;
-    let pivot: THREE.Vector3;
-    let dist = this.camDist;
-    let yaw = this.camYaw;
-    let elev = this.elev;
-    let exclude: RAPIER.RigidBody | undefined = this.body;
+    const mode = this.camMode;
+    const first = mode === 'first';
+    this.avatar.setHeadHidden(first);
+    cam.near = first ? 0.04 : 0.1;
+    cam.updateProjectionMatrix();
+    const idle = performance.now() - this.lastMouse > 1800;
+    const viewDir = (yaw: number, elev: number) => {
+      const ce = Math.cos(elev);
+      return new THREE.Vector3(-Math.sin(yaw) * ce, Math.sin(elev), -Math.cos(yaw) * ce); // target → camera
+    };
+
+    // ── in the driver's seat ──
     if (this.car && this.car.seat === 0) {
-      // Chase camera: sits behind the car, mouse orbits, recentres after a moment.
       const car = this.car.car;
-      const f = new THREE.Vector3(0, 0, 1).applyQuaternion(car.quaternion());
+      const cq = car.quaternion();
+      const f = new THREE.Vector3(0, 0, 1).applyQuaternion(cq);
       const carYaw = Math.atan2(f.x, f.z);
       this.carCamYaw = approachAngle(this.carCamYaw, carYaw, dt * 3);
-      if (performance.now() - this.lastMouse > 1800) this.camYaw = approachAngle(this.camYaw, this.carCamYaw, dt * 2.5);
-      yaw = this.camYaw;
-      pivot = car.position(this.tmp).add(new THREE.Vector3(0, 1.4, 0));
-      dist = Math.max(5.5, this.camDist + 2);
-      elev = Math.max(0.12, Math.min(this.elev, 0.6));
-      exclude = car.body;
-    } else {
-      pivot = this.head(this.tmp);
-      if (this.car) exclude = this.car.car.body;
-      if (this.onFoot) dist = this.camDist * (this.stance === 2 ? 0.75 : this.stance === 1 ? 0.85 : 1);
+      if (idle) this.camYaw = approachAngle(this.camYaw, first ? carYaw : this.carCamYaw, dt * (first ? 4 : 2.5));
+      if (first) {
+        // Driver's eyes, looking out of the windscreen; the view tilts with the car.
+        const eye = car.seatWorld(0, this.tmp).add(new THREE.Vector3(0, 0.74, 0.03).applyQuaternion(cq));
+        cam.position.copy(eye);
+        let yawOff = this.camYaw - carYaw;
+        yawOff = Math.atan2(Math.sin(yawOff), Math.cos(yawOff));
+        const pitch = -THREE.MathUtils.clamp(this.elev - 0.12, -0.6, 0.6);
+        cam.quaternion.copy(cq).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, Math.PI + yawOff, 0, 'YXZ')));
+        return;
+      }
+      const dist = mode === 'far' ? 11 : mode === 'shoulder' ? 4.2 : Math.max(5.5, this.camDist + 2);
+      const pivot = car.position(this.tmp).add(new THREE.Vector3(0, mode === 'far' ? 2.0 : 1.35, 0));
+      const elev = mode === 'far' ? Math.max(0.3, Math.min(this.elev, 0.8)) : Math.max(0.1, Math.min(this.elev, 0.6));
+      this.camTarget.copy(pivot);
+      this.placeOrbit(viewDir(this.camYaw, elev), dist, car.body);
+      return;
+    }
+
+    // ── on foot / seated / passenger ──
+    const eyeH = this.onFoot ? (this.swimming ? 1.5 : EYE[this.stance]) : 0.8;
+    if (first) {
+      const eye = this.avatar.eyes(this.tmp, eyeH);
+      // Nudge forward of the face so the near plane never clips the skull.
+      eye.add(new THREE.Vector3(Math.sin(this.camYaw), 0, Math.cos(this.camYaw)).multiplyScalar(0.1));
+      cam.position.copy(eye);
+      cam.lookAt(eye.clone().sub(viewDir(this.camYaw, this.elev)));
+      return;
+    }
+    const pivot = this.head(this.tmp);
+    let dist = this.camDist * (this.stance === 2 ? 0.75 : this.stance === 1 ? 0.85 : 1);
+    let elev = this.elev;
+    if (mode === 'far') {
+      dist = Math.max(8, this.camDist * 2.3);
+      elev = Math.max(0.35, elev);
+    } else if (mode === 'shoulder') {
+      // Over the right shoulder, close in.
+      const right = new THREE.Vector3(-Math.cos(this.camYaw), 0, Math.sin(this.camYaw));
+      pivot.addScaledVector(right, 0.48).add(new THREE.Vector3(0, 0.08, 0));
+      dist = 1.75;
     }
     this.camTarget.lerp(pivot, this.car ? 1 : Math.min(1, dt * 18));
-    const ce = Math.cos(elev);
-    const dir = new THREE.Vector3(-Math.sin(yaw) * ce, Math.sin(elev), -Math.cos(yaw) * ce);
+    this.placeOrbit(viewDir(this.camYaw, elev), dist, this.car ? this.car.car.body : this.body);
+  }
+
+  /** Orbit camera: back off from camTarget along dir, pulled in by walls, kept above ground/water. */
+  private placeOrbit(dir: THREE.Vector3, dist: number, exclude: RAPIER.RigidBody) {
+    const cam = this.world.camera;
     const hit = this.world.physics.castRay(new RAPIER.Ray(this.camTarget, dir), dist, true, undefined, undefined, undefined, exclude);
-    const d = hit ? Math.max(0.5, hit.timeOfImpact - 0.25) : dist;
+    const d = hit ? Math.max(0.4, hit.timeOfImpact - 0.22) : dist;
     cam.position.copy(this.camTarget).addScaledVector(dir, d);
     const gy = this.world.terrain.heightAt(cam.position.x, cam.position.z) + 0.3;
     if (cam.position.y < gy) cam.position.y = gy;

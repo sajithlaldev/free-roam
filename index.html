@@ -36,6 +36,7 @@
       #empty { color: var(--muted); }
 
       #status { top: 12px; left: 12px; }
+      #toast { top: 18%; left: 50%; transform: translateX(-50%); font-weight: 600; }
       #minimap { position: fixed; right: 12px; bottom: 12px; width: 180px; height: 180px; border-radius: 12px; border: 1px solid #28313c; image-rendering: pixelated; }
       #dash { left: 50%; bottom: 74px; transform: translateX(-50%); display: flex; gap: 10px; align-items: baseline; font-variant-numeric: tabular-nums; }
       #dash b { font-size: 28px; }
@@ -80,7 +81,8 @@
       </div>
       <div class="panel" id="dash" hidden></div>
       <canvas id="minimap" width="180" height="180"></canvas>
-      <div class="panel" id="help">Click to look · WASD move · Shift sprint · Space jump · C crouch · Z lie down · E interact (sit · drive · hold at a mic) · M mute · scroll to zoom</div>
+      <div class="panel" id="toast" hidden></div>
+      <div class="panel" id="help">Click to look · WASD move · Shift sprint · Space jump · C crouch · Z lie down · E interact (sit · drive · hold at a mic) · V camera · G graphics · M mute · scroll to zoom</div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

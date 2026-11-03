@@ -42,6 +42,8 @@ Production: `npm run build && npm start` (the token server also serves `dist/`).
 | C | crouch / stand |
 | Z | lie down (kneel → prone) / get up; moving while prone crawls |
 | E | context action: **drive / ride** a Jimny · **sit** on a chair or bench · **hold at a mic** to talk on that PA |
+| V | camera: normal → zoomed out → over the shoulder → first person |
+| G | graphics quality: High → Medium → Low |
 | M | mute / unmute |
 
 **Driving** (E at the driver's door — the right-hand side; other doors make you a passenger)
@@ -53,7 +55,21 @@ Production: `npm run build && npm start` (the token server also serves `dist/`).
 | Space | handbrake (the tail steps out at speed) |
 | L | 4H ↔ 4L transfer case (when slow) — low range for steep climbs |
 | R | reset upright if you've rolled it or got stuck |
+| V | camera: chase → far chase → close chase → driver's-eye cockpit |
 | E | get out |
+
+## Graphics
+
+Three presets (G; remembered per browser):
+
+| | High | Medium | Low |
+| --- | --- | --- | --- |
+| Ambient occlusion (GTAO, half-res, from the real scene depth so leaves are correct) | ✓ | | |
+| Bloom (HDR threshold: only the sun, sky glare and lamps), colour grade, SMAA | ✓ | ✓ | |
+| Sun shadow map / area around you | 4096 / ±75 m | 2048 / ±60 m | 1024 / ±45 m |
+| Dense grass carpet around the camera | 14k clumps, 30 m | 7k, 22 m | off |
+
+Always on: sky with image-based lighting, a drifting procedural cloud layer, wind sway on palms, trees, bananas, rice and grass, depth-aware water (turquoise shallows, dark deeps, transparent at the edge) with lapping shoreline foam, bump-mapped ground with anti-tiling variation, distance-culled vegetation tiles.
 
 ## Voice and audio
 
@@ -93,7 +109,7 @@ Only the driver's client simulates a car; everyone else receives its pose at 20 
 
 The character model ships without animation clips, so the body is animated procedurally from its humanoid skeleton (works with any Mixamo / Ready Player Me–style rig):
 
-- **Legs:** analytic two-bone IK with planted feet — each foot stays fixed during stance and swings through with lift, heel-off and toe-off; stride, cadence and the stance/swing ratio change continuously from walk to run to sprint; feet follow the ground slope.
+- **Legs:** analytic two-bone IK with planted feet. The stance foot's toe joint stays fixed on the ground while the heel strikes, rolls flat and lifts (the foot pivots about the toe, raising the ankle) before toe-off; cadence, stride and the stance/swing ratio follow speed and are scaled to the rig's leg length; hip height is solved each frame from what the stance leg can reach (the natural walking bob, ~7 cm), so the body never sinks into a crouch. Feet follow the ground slope. `tools/anim-lab.html` measures foot slip and hip/head height at each speed.
 - **Body:** pelvis bob (vaulting walk vs compressing run), lateral sway and twist; shoulders counter-rotate; arms swing opposite the legs and bend into a pumping sprint; lean into acceleration; bank into turns; the head stays level and looks into turns; turning on the spot makes the feet step.
 - **Jump:** take-off, airborne tuck with arms out, landing absorbed by the knees in proportion to fall speed.
 - **Crouch**, **lie down** (kneel first, then onto the forearms; crawling when moving), **swim** (breaststroke when moving, treading water when still), **sit** (chairs and benches; car passenger; driving with hands on the wheel).

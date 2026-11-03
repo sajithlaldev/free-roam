@@ -85,6 +85,15 @@ export class UI {
     this.hint.classList.toggle('live', live);
   }
 
+  private toastTimer = 0;
+  toast(text: string) {
+    const t = $('toast');
+    t.textContent = text;
+    t.hidden = false;
+    clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => (t.hidden = true), 1600);
+  }
+
   setHelpVisible(v: boolean) {
     this.help.hidden = !v;
   }

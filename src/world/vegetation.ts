@@ -8,6 +8,7 @@ import {
 import { Simplex2, mulberry32 } from './noise';
 import type { Terrain } from './terrain';
 import { textures } from './textures';
+import { addWind } from './wind';
 
 const rnd = mulberry32(4242);
 const noise = new Simplex2(77);
@@ -275,6 +276,23 @@ function teaHedges(t: Terrain, occupied: (x: number, z: number, pad?: number) =>
   return m;
 }
 
+/** Open grassy ground: dry land that isn't road, building, temple, maidan, paddy, beach or tea. */
+export function grassMask(t: Terrain): (x: number, z: number) => boolean {
+  const V = t.N + 1;
+  const half = (t.N * t.cell) / 2;
+  const blocked = BUILDINGS.map((d) => rect(d.x, d.z, d.w + 3, d.d + 3));
+  const temple = rect(TEMPLE.x, TEMPLE.z, TEMPLE.size + 2, TEMPLE.size + 2);
+  return (x, z) => {
+    if (t.waterDepth(x, z) > 0 || t.roadDist(x, z) < ROAD_WIDTH / 2 + 1.2 || t.isPaddy(x, z) || x - coastX(z) < 24) return false;
+    if (hillMask(x, z) > 0.42 || inRect(MAIDAN, x, z, 0.5) || inRect(temple, x, z) || inRect(TEMPLE_POND, x, z, 2) || inRect(JETTY, x, z, 1)) return false;
+    if (blocked.some((r) => inRect(r, x, z))) return false;
+    const ix = Math.round((x + half) / t.cell);
+    const iz = Math.round((z + half) / t.cell);
+    const i = (Math.min(V - 1, Math.max(0, iz)) * V + Math.min(V - 1, Math.max(0, ix))) * 3;
+    return t.colors[i + 1] > t.colors[i] * 1.15; // green-dominant ground colour
+  };
+}
+
 export function buildVegetation(scene: THREE.Object3D, physics: RAPIER.World, t: Terrain) {
   const tex = textures();
   const buildingRects = BUILDINGS.map((d) => rect(d.x, d.z, d.w + 5, d.d + 5));
@@ -309,6 +327,7 @@ export function buildVegetation(scene: THREE.Object3D, physics: RAPIER.World, t:
   }
   const barkMat = new THREE.MeshStandardMaterial({ map: tex.bark, roughness: 0.95 });
   const frondMat = new THREE.MeshStandardMaterial({ map: tex.frond, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.75, color: 0xd8ecc0 });
+  addWind(frondMat, 'frond');
   const nutMat = new THREE.MeshStandardMaterial({ color: 0x6f7a2c, roughness: 0.7 });
   const variants = [palmGeometry(0.6, 11), palmGeometry(1.5, 10.5), palmGeometry(-0.9, 12.5)];
   variants.forEach((v, i) => {
@@ -334,6 +353,7 @@ export function buildVegetation(scene: THREE.Object3D, physics: RAPIER.World, t:
   const oakCanopy = canopyGeometry(0, 10, 0, 1.8, 3.6, 1.8, 30, 1.6);
   const coreMat = new THREE.MeshStandardMaterial({ color: 0x24401a, roughness: 0.95 });
   const cardMat = new THREE.MeshStandardMaterial({ map: tex.leaves, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.8, color: 0xc9dcb0 });
+  addWind(cardMat, 'leaf');
   addInstances(scene, oakTrunk, new THREE.MeshStandardMaterial({ color: 0x6b5a48 }), oaks, true);
   addInstances(scene, oakCanopy.core, coreMat, oaks, true);
   addInstances(scene, oakCanopy.cards, cardMat, oaks, true);
@@ -371,7 +391,9 @@ export function buildVegetation(scene: THREE.Object3D, physics: RAPIER.World, t:
   }
   const banana = bananaGeometry();
   addInstances(scene, banana.stem, new THREE.MeshStandardMaterial({ color: 0x7a8a3a }), bananas, true);
-  addInstances(scene, banana.leaves, new THREE.MeshStandardMaterial({ color: 0x5f9a2e, side: THREE.DoubleSide, roughness: 0.6 }), bananas, true);
+  const bananaMat = new THREE.MeshStandardMaterial({ color: 0x5f9a2e, side: THREE.DoubleSide, roughness: 0.6 });
+  addWind(bananaMat, 'banana');
+  addInstances(scene, banana.leaves, bananaMat, bananas, true);
 
   // ── rice in the paddy fields ──
   const rice: Placement[] = [];
@@ -387,6 +409,7 @@ export function buildVegetation(scene: THREE.Object3D, physics: RAPIER.World, t:
     }
   }
   const riceMat = new THREE.MeshStandardMaterial({ map: tex.grass, alphaTest: 0.4, side: THREE.DoubleSide, color: 0xc8f07a, roughness: 0.8 });
+  addWind(riceMat, 'grass', 0.8);
   addInstances(scene, tuftGeometry(1.1, 0.75), riceMat, rice, false, undefined, { tile: 50, maxDist: 110 });
 
   // ── grass tufts on open land ──
@@ -401,7 +424,8 @@ export function buildVegetation(scene: THREE.Object3D, physics: RAPIER.World, t:
     grass.push({ x, y: t.heightAt(x, z) - 0.03, z, s: 0.6 + rnd() * 0.6, ry: rnd() * 6.28 });
   }
   const grassMat = new THREE.MeshStandardMaterial({ map: tex.grass, alphaTest: 0.5, side: THREE.DoubleSide, color: 0xd8f0a0, roughness: 0.9 });
-  addInstances(scene, tuftGeometry(0.9, 0.55), grassMat, grass, false, undefined, { tile: 50, maxDist: 70 });
+  addWind(grassMat, 'grass');
+  addInstances(scene, tuftGeometry(0.55, 0.32), grassMat, grass, false, undefined, { tile: 50, maxDist: 90 });
 
   // ── rocks on the Kovalam headland and along the shore ──
   const rockMat = new THREE.MeshStandardMaterial({ color: 0x6d6862, roughness: 0.95, flatShading: true });

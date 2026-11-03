@@ -1,0 +1,61 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:#9cc}canvas{display:block}</style></head><body><script type="module">
+// Animation lab: an avatar on a flat floor, stepped at a fixed rate, with measurements.
+import * as THREE from 'three';
+import { Avatar } from '/src/player.ts';
+import { findHumanoidBone } from '/src/procedural.ts';
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xbfd8e8);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x667755, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(5, 10, 3); scene.add(sun);
+const grid = new THREE.GridHelper(400, 400, 0x335533, 0x88aa88); scene.add(grid);
+const cam = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 200);
+const av = new Avatar('Lab', 'lab');
+scene.add(av.group);
+await new Promise((r) => { const t = setInterval(() => { if (av.rig) { clearInterval(t); r(); } }, 50); });
+const model = av.pose.children[0];
+const B = (n) => findHumanoidBone(model, n);
+const bones = { lf: B('LeftFoot'), rf: B('RightFoot'), lt: B('LeftToeBase'), rt: B('RightToeBase'), hips: B('Hips'), head: B('Head'), lu: B('LeftUpLeg'), ll: B('LeftLeg') };
+const wp = (o) => o.getWorldPosition(new THREE.Vector3());
+let x = 0;
+window.lab = {
+  /** Walk along +X for `secs` at `speed`, returning per-frame stats. */
+  run(speed, secs, extra = {}) {
+    av.group.rotation.y = Math.PI / 2; // face +X
+    const dt = 1 / 60, rows = [];
+    for (let i = 0; i < secs * 60; i++) {
+      x += speed * dt;
+      av.group.position.set(x, 0, 0);
+      av.animate(dt, { speed, vy: 0, grounded: true, stance: 0, sit: 0, swim: false, sprint: speed > 4.5, yawRate: 0, ...extra });
+      av.group.updateWorldMatrix(true, true);
+      const lf = wp(bones.lf), rf = wp(bones.rf), lt = wp(bones.lt), rt = wp(bones.rt);
+      rows.push({ lf, rf, lt, rt, hips: wp(bones.hips).y, head: wp(bones.head).y });
+    }
+    return rows;
+  },
+  stats(rows) {
+    // A foot is planted while its toe joint is on the ground; slip = how far that toe moves.
+    let slip = 0, n = 0;
+    for (const t of ['lt', 'rt']) for (let i = 1; i < rows.length; i++) {
+      if (rows[i][t].y < 0.05 && rows[i - 1][t].y < 0.05) { slip += Math.abs(rows[i][t].x - rows[i - 1][t].x); n++; }
+    }
+    const hips = rows.map(r => r.hips), head = rows.map(r => r.head);
+    const minToe = Math.min(...rows.flatMap(r => [r.lt.y, r.rt.y]));
+    const planted = n / (2 * (rows.length - 1));
+    return { toeSlip_mm: +(1000 * slip / Math.max(1, n)).toFixed(1), plantedFrac: +planted.toFixed(2), minToe: +minToe.toFixed(3), hipsMin: +Math.min(...hips).toFixed(3), hipsMax: +Math.max(...hips).toFixed(3), headMin: +Math.min(...head).toFixed(3), headMax: +Math.max(...head).toFixed(3) };
+  },
+  rest() {
+    const p = {}; for (const [k, b] of Object.entries(bones)) p[k] = wp(b).toArray().map(v => +v.toFixed(3));
+    return p;
+  },
+  view(side = true) {
+    const p = av.group.position;
+    cam.position.set(p.x + (side ? 0 : -4), 0.95, side ? 4.2 : 0.3); cam.lookAt(p.x, 0.85, 0);
+    renderer.render(scene, cam);
+  },
+  av,
+};
+window.__ready = true;
+</script></body></html>

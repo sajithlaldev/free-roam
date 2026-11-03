@@ -3,7 +3,7 @@ import { Announcer } from './announce';
 import { Car, JIMNY, type CarInput } from './car';
 import { AVATAR, CAR_HZ, CAR_PARKED_HEARTBEAT_MS, POS_HZ } from './config';
 import { Net } from './net';
-import { LocalPlayer, RemotePlayer } from './player';
+import { CAM_LABEL, LocalPlayer, RemotePlayer } from './player';
 import { UI, type PlayerRow } from './ui';
 import { EngineSound, Voice, gainAt } from './voice';
 import { World } from './world/index';
@@ -126,6 +126,7 @@ ui.onJoin(async (name) => {
     announcer = new Announcer(net, voice, world);
   }
   player = new LocalPlayer(world, canvas, name);
+  player.onCamMode = (m) => ui.toast(`Camera: ${CAM_LABEL[m]}`);
   ui.showHud();
   ui.setStatus(SOLO ? 'Solo mode (no voice chat)' : `Connected as ${name}`);
   ui.setMic(net?.micAvailable ? 'on' : 'unavailable');
@@ -142,8 +143,11 @@ async function toggleMic() {
 }
 ui.onMicToggle(() => void toggleMic());
 addEventListener('keydown', (e) => {
-  if (e.code === 'KeyM' && !e.repeat && !(e.target instanceof HTMLInputElement)) void toggleMic();
+  if (e.repeat || e.target instanceof HTMLInputElement) return;
+  if (e.code === 'KeyM') void toggleMic();
+  if (e.code === 'KeyG') world.cycleQuality();
 });
+world.onQuality = (q) => ui.toast(`Graphics: ${q[0].toUpperCase()}${q.slice(1)}`);
 addEventListener('pointerdown', () => voice?.resume());
 addEventListener('keydown', () => voice?.resume());
 
