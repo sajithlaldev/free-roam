@@ -14,6 +14,8 @@ import * as THREE from 'three';
  *   head stays level and looks into the turn; turning on the spot makes the feet step.
  * - Jump (take-off, tuck, land with impact absorption), crouch, kneel → lie prone
  *   (and crawl), swim (breaststroke / treading water), sit (chair, car seat, driving).
+ * - Jogging (~3 m/s) is a light run with a short flight phase, a smaller arm pump and less
+ *   lean than a sprint.
  * - Walking follows measured human gait: ~1.8 steps/s at 1.3 m/s, pelvic list (the swing
  *   side drops), lateral sway over the stance foot, modest arm swing with the elbow bending
  *   as the arm comes forward.
@@ -373,7 +375,7 @@ export class ProceduralRig {
     const airTarget = !inp.grounded && !inp.swim && !sitting ? 1 : 0;
     w.air = approach(w.air, airTarget, airTarget ? 12 : 18, dt);
     w.move = approach(w.move, THREE.MathUtils.clamp(s / 0.6, 0, 1), 8, dt);
-    w.run = approach(w.run, sstep(2.4, 4.6, s), 6, dt);
+    w.run = approach(w.run, sstep(1.9, 3.0, s), 6, dt);
     w.sprint = approach(w.sprint, inp.sprint && s > 4.5 ? 1 : 0, 4, dt);
     const turningInPlace = s < 0.4 && Math.abs(this.yawRate) > 1.1 && inp.grounded && !sitting;
     w.turn = approach(w.turn, turningInPlace ? 1 : 0, 8, dt);
@@ -522,8 +524,9 @@ export class ProceduralRig {
     const breathRate = 0.22 + 0.15 * Math.min(1, this.speed / 5) + 0.1 * w.sprint;
     this.breathPh = (this.breathPh + breathRate * dt) % 1;
     const breathe = Math.sin(this.breathPh * TAU);
+    const effort = sstep(2.5, 6, s); // 0 jog … 1 sprint
     const lean =
-      (0.05 * moveW + 0.16 * w.run + 0.1 * w.sprint + 0.38 * w.crouch + THREE.MathUtils.clamp(this.accel * 0.03, -0.12, 0.15)) * standW +
+      (0.05 * moveW + (0.07 + 0.09 * effort) * w.run + 0.1 * w.sprint + 0.38 * w.crouch + THREE.MathUtils.clamp(this.accel * 0.03, -0.12, 0.15)) * standW +
       0.12 * kneelW - 0.06 * w.sit * (1 - w.car) + 0.08 * w.drive;
     const twist = 0.11 * moveW * Math.sin(TAU * this.phase) * standW;
     // Pelvic list: the swing-side hip drops ~4° during single support (walking only).
@@ -613,11 +616,11 @@ export class ProceduralRig {
       const sw = Math.sin(TAU * p);
       // Walking: a relaxed swing that grows with speed, a bit further forward than back.
       const walkAmp = 0.09 + 0.075 * Math.min(this.speed, 2);
-      const swing = (walkAmp * (1 - w.run) + (0.65 + 0.15 * w.sprint) * w.run) * moveW * sw * (sw > 0 ? 1 + 0.15 * (1 - w.run) - 0.35 * w.run : 1 - 0.1 * (1 - w.run) + 0.3 * w.run);
+      const swing = (walkAmp * (1 - w.run) + (0.42 + 0.23 * sstep(2.5, 6, this.speed) + 0.15 * w.sprint) * w.run) * moveW * sw * (sw > 0 ? 1 + 0.15 * (1 - w.run) - 0.35 * w.run : 1 - 0.1 * (1 - w.run) + 0.3 * w.run);
       const sway = 0.02 * Math.sin(this.t * 1.3 + sd.sx) * (1 - w.idle) + 0.012 * breathe * w.idle;
       const hang = THREE.MathUtils.degToRad(8 + 6 * w.run + 1.5 * breathe * w.idle);
       let upper = v3(sd.sx * Math.sin(hang), -Math.cos(hang), 0).applyAxisAngle(X, -(swing + sway) - 0.45 * w.crouch);
-      let elbow = 0.2 + 0.18 * moveW + 0.16 * Math.max(0, sw) * moveW * (1 - w.run) + 1.05 * w.run + 0.15 * w.sprint + 0.7 * w.crouch + 0.4 * w.run * sw;
+      let elbow = 0.2 + 0.18 * moveW + 0.16 * Math.max(0, sw) * moveW * (1 - w.run) + (0.95 + 0.1 * sstep(2.5, 6, this.speed)) * w.run + 0.15 * w.sprint + 0.7 * w.crouch + 0.4 * w.run * sw;
       // Airborne: arms come up and out for balance.
       if (w.air > 0.001) {
         upper.lerp(v3(sd.sx * 0.65, -0.35, inp.vy > 0 ? 0.45 : 0.2).normalize(), w.air).normalize();

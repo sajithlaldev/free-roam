@@ -12,7 +12,7 @@ import type { World } from './world/index';
 // Capsule shapes per stance: [halfHeight, radius]; the capsule's centre sits half+radius above the feet.
 const SHAPES: Record<Stance, [number, number]> = { 0: [0.5, 0.33], 1: [0.22, 0.33], 2: [0.06, 0.3] };
 export const EYE: Record<Stance, number> = { 0: 1.6, 1: 1.1, 2: 0.45 };
-const SPEED = { walk: 1.3, sprint: 6.4, crouch: 1.15, prone: 0.55, swim: 1.1, swimFast: 1.8 };
+const SPEED = { walk: 1.3, jog: 3.2, sprint: 6.4, crouch: 1.15, prone: 0.55, swim: 1.1, swimFast: 1.8 };
 const GRAVITY = 9.81;
 const JUMP_V = 3.4; // ≈ 0.6 m jump
 const SWIM_DEPTH = 1.25; // deeper than this (at the player's position) → swimming
@@ -321,6 +321,9 @@ export class LocalPlayer {
   })();
   /** Called when V switches the camera (for the HUD). */
   onCamMode?: (m: CamMode) => void;
+  /** Q toggles the default on-foot pace between walking and jogging. */
+  jog = false;
+  onJog?: (on: boolean) => void;
 
   stance: Stance = 0;
   sprint = false;
@@ -520,6 +523,10 @@ export class LocalPlayer {
     if (!this.onFoot) return;
     const k = this.keys;
 
+    if (this.tapped('KeyQ')) {
+      this.jog = !this.jog;
+      this.onJog?.(this.jog);
+    }
     if (this.tapped('KeyC')) this.setShape(this.stance === 1 ? 0 : 1);
     if (this.tapped('KeyZ')) this.setShape(this.stance === 2 ? 0 : 2) || this.setShape(1);
     if (this.stance === 2 && this.pressed.has('Space')) {
@@ -542,16 +549,19 @@ export class LocalPlayer {
     }
     const wantSprint = (k.has('ShiftLeft') || k.has('ShiftRight') || (useStick && stick > 0.94)) && len > 0 && this.stance === 0;
     this.sprint = wantSprint && !this.swimming;
+    // Stick: a gentle push walks (slower the less it's pushed), a firm push jogs, all the way
+    // sprints (above). Keyboard: walk, or jog with Q toggled on; Shift sprints.
+    const stickJog = useStick && stick > 0.62;
+    const jogging = !this.sprint && this.stance === 0 && !this.swimming && (useStick ? stickJog : this.jog);
     const top = this.swimming
       ? wantSprint ? SPEED.swimFast : SPEED.swim
-      : this.stance === 2 ? SPEED.prone : this.stance === 1 ? SPEED.crouch : this.sprint ? SPEED.sprint : SPEED.walk;
+      : this.stance === 2 ? SPEED.prone : this.stance === 1 ? SPEED.crouch : this.sprint ? SPEED.sprint : jogging ? SPEED.jog : SPEED.walk;
 
     // Accelerate / decelerate like a person, not instantly.
-    // A half-pushed stick walks slower (full push sprints, above).
-    const throttle = useStick && !this.sprint ? Math.min(1, stick / 0.85) : 1;
+    const throttle = useStick && !this.sprint && !jogging ? Math.min(1, stick / 0.55) : 1;
     const tx = mx * top * throttle;
     const tz = mz * top * throttle;
-    const accel = len > 0 ? (this.sprint ? 7 : 10) : 12;
+    const accel = len > 0 ? (this.sprint ? 7 : jogging ? 8 : 10) : 12;
     const a = 1 - Math.exp(-accel * h * 0.5);
     if (this.grounded || this.swimming) this.vel.set(this.vel.x + (tx - this.vel.x) * a, this.vel.y + (tz - this.vel.y) * a);
 

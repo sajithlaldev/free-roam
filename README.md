@@ -36,7 +36,7 @@ The join screen offers **Single player** (offline: you, the town's pedestrians a
 
 ## Phones and tablets
 
-On touch devices a controls overlay appears: a floating analog stick on the left (push gently to walk, all the way to sprint; when driving it's throttle / brake / steering), drag anywhere on the right to look, and context buttons — Jump, Crouch, Lie, Interact (E: enter / sit / exit, hold at a mic to talk), camera and mic; in a car Brake (handbrake), Horn, 4L, Reset, Race, Exit. Graphics start on Low on phones; landscape is recommended.
+On touch devices a controls overlay appears: a floating analog stick on the left (push gently to walk, firmly to jog, all the way to sprint; when driving it's throttle / brake / steering), drag anywhere on the right to look, and context buttons — Jump, Crouch, Lie, Interact (E: enter / sit / exit, hold at a mic to talk), camera and mic; in a car Brake (handbrake), Horn, 4L, Reset, Race, Exit. Graphics start on Low on phones; landscape is recommended.
 
 ## Run it
 
@@ -59,7 +59,7 @@ Production: `npm run build && npm start` (the token server also serves `dist/`).
 | Key | Action |
 | --- | --- |
 | Click | capture the mouse (look around); Esc releases · scroll to zoom |
-| W A S D | walk · **Shift** sprint |
+| W A S D | walk (1.3 m/s) · **Q** toggles jogging (3.2 m/s) · **Shift** sprint (6.4 m/s) |
 | Space | jump (stands you up if crouched / lying down) |
 | C | crouch / stand |
 | Z | lie down (kneel → prone) / get up; moving while prone crawls |
@@ -194,6 +194,7 @@ The character model ships without animation clips, so the body is animated proce
 
 - **Legs:** analytic two-bone IK with planted feet. The stance foot's toe joint stays fixed on the ground while the heel strikes, rolls flat and lifts (the foot pivots about the toe, raising the ankle) before toe-off; cadence, stride and the stance/swing ratio follow speed and are scaled to the rig's leg length; hip height is solved each frame from what the stance leg can reach (the natural walking bob, ~7 cm), so the body never sinks into a crouch. Feet follow the ground slope. `tools/anim-lab.html` measures foot slip and hip/head height at each speed.
 - **Body:** pelvis bob (vaulting walk vs compressing run), lateral sway and twist; shoulders counter-rotate; arms swing opposite the legs and bend into a pumping sprint; lean into acceleration; bank into turns; the head stays level and looks into turns; turning on the spot makes the feet step.
+- **Jog:** about 3.2 m/s, a light run with a short flight phase, a smaller arm pump and less lean than the sprint.
 - **Walk:** follows measured human gait. It's a relaxed 1.3 m/s at about 1.8 steps a second, with pelvic list (the swing-side hip drops), sway over the stance foot and a modest arm swing that grows with speed, the elbow bending as each arm comes forward. Sprint is unchanged.
 - **Idle:**
   - **Always, when standing still:** breathing (chest and shoulders) and a slow balance sway.

@@ -197,6 +197,7 @@ ui.onJoin(async (name) => {
   }
   player = new LocalPlayer(world, canvas, name);
   player.onCamMode = (m) => ui.toast(`Camera: ${CAM_LABEL[m]}`);
+  player.onJog = (on) => ui.toast(on ? 'Jogging (Q to walk)' : 'Walking (Q to jog)');
   if (TOUCH) {
     touch = new TouchControls(player);
     void document.documentElement.requestFullscreen?.().catch(() => {});
